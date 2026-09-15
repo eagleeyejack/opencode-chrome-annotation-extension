@@ -566,7 +566,9 @@ function sessionPickerScript(items, context, currentSessionId) {
       "left:50%",
       "z-index:2147483647",
       "transform:translateX(-50%)",
-      "display:block",
+      "display:flex",
+      "flex-direction:column",
+      "max-height:min(560px,calc(100vh - 64px))",
       "width:min(420px,calc(100vw - 20px))",
       "padding:10px",
       "border-radius:14px",
@@ -612,6 +614,10 @@ function sessionPickerScript(items, context, currentSessionId) {
     groupName: "font-weight:700;color:#111111;font-size:11px;flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;",
     groupPath: "color:#6b7280;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;",
     meta: "margin-top:2px;color:#6b7280;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:0.92;",
+    chipsRow: "display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 2px 8px;flex:none;",
+    chip: "padding:4px 10px;border-radius:999px;border:1px solid rgba(0,0,0,0.12);background:transparent;color:#111111;cursor:pointer;font:600 11px/1 ui-sans-serif,system-ui,sans-serif;white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis;",
+    chipActive: "background:#111111;color:#ffffff;border-color:#111111;",
+    list: "flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;margin:0 2px;",
     close: "display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;color:#111111;cursor:pointer;font:700 14px/1 ui-sans-serif,system-ui,sans-serif;padding:0 2px;"
   };
   function ensureOverlay() {
@@ -675,7 +681,7 @@ function sessionPickerScript(items, context, currentSessionId) {
     const isLinked = Boolean(currentSessionId) && item.id === currentSessionId;
     return h("button", {
       style: STYLE.itemButton,
-      attrs: { type: "button", "data-role": "session-item" },
+      attrs: { type: "button", "data-role": "session-item", "data-session-id": item.id },
       on: {
         click: () => {
           try {
@@ -810,6 +816,22 @@ function sessionPickerScript(items, context, currentSessionId) {
       }, [createCloseIcon()])
     ])
   ]));
+  let sessionButtons = [];
+  let focusedIndex = -1;
+  function setFocusedIndex(nextIndex, scroll = true) {
+    if (!sessionButtons.length) {
+      focusedIndex = -1;
+      return;
+    }
+    const count = sessionButtons.length;
+    focusedIndex = (nextIndex % count + count) % count;
+    sessionButtons.forEach((button, index) => {
+      button.style.cssText = STYLE.itemButton + (index === focusedIndex ? `;${STYLE.itemButtonFocused}` : "");
+    });
+    sessionButtons[focusedIndex].focus({ preventScroll: true });
+    if (scroll)
+      sessionButtons[focusedIndex].scrollIntoView({ block: "nearest" });
+  }
   if (items.length) {
     const groups = [];
     const byDirectory = new Map();
@@ -823,35 +845,70 @@ function sessionPickerScript(items, context, currentSessionId) {
       }
       group.items.push(item);
     }
-    for (const group of groups) {
-      if (groups.length > 1) {
-        const segments = group.directory.split("/").filter(Boolean);
-        const projectName = segments.length ? segments[segments.length - 1] : group.directory;
-        overlay.appendChild(h("div", { style: STYLE.groupHeader }, [
-          h("span", { text: projectName, style: STYLE.groupName }),
-          h("span", { text: group.directory, style: STYLE.groupPath })
-        ]));
+    function projectNameFor(directory) {
+      const segments = directory.split("/").filter(Boolean);
+      return segments.length ? segments[segments.length - 1] : directory || "Unknown project";
+    }
+    let activeProject = "";
+    if (groups.length > 1) {
+      const chipsRow = h("div", { style: STYLE.chipsRow });
+      const chipDefs = [{ label: `All (${items.length})`, value: "" }].concat(groups.map((group) => ({
+        label: `${projectNameFor(group.directory)} (${group.items.length})`,
+        value: group.directory
+      })));
+      function syncChips() {
+        for (const chipEl of chipsRow.querySelectorAll("[data-role='project-chip']")) {
+          const isActive = (chipEl.getAttribute("data-value") || "") === activeProject;
+          chipEl.style.cssText = STYLE.chip + (isActive ? `;${STYLE.chipActive}` : "");
+          chipEl.setAttribute("aria-pressed", isActive ? "true" : "false");
+        }
       }
-      for (const item of group.items) {
-        overlay.appendChild(sessionButton(close, item));
+      for (const def of chipDefs) {
+        chipsRow.appendChild(h("button", {
+          text: def.label,
+          style: STYLE.chip,
+          attrs: { type: "button", "data-role": "project-chip", "data-value": def.value },
+          on: {
+            click: (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              activeProject = def.value;
+              syncChips();
+              renderList();
+            }
+          }
+        }));
+      }
+      syncChips();
+      overlay.appendChild(chipsRow);
+    }
+    const listContainer = h("div", { style: STYLE.list, attrs: { "data-role": "session-list" } });
+    overlay.appendChild(listContainer);
+    function appendSessionButtons() {
+      const visibleGroups = activeProject ? groups.filter((group) => group.directory === activeProject) : groups;
+      for (const group of visibleGroups) {
+        if (!activeProject && visibleGroups.length > 1) {
+          listContainer.appendChild(h("div", { style: STYLE.groupHeader }, [
+            h("span", { text: projectNameFor(group.directory), style: STYLE.groupName }),
+            h("span", { text: group.directory, style: STYLE.groupPath })
+          ]));
+        }
+        for (const item of group.items) {
+          listContainer.appendChild(sessionButton(close, item));
+        }
       }
     }
+    function renderList() {
+      listContainer.innerHTML = "";
+      appendSessionButtons();
+      sessionButtons = Array.from(listContainer.querySelectorAll("[data-role='session-item']"));
+      const linkedIndex = currentSessionId ? sessionButtons.findIndex((button) => button.dataset.sessionId === currentSessionId) : -1;
+      listContainer.scrollTop = 0;
+      setFocusedIndex(linkedIndex >= 0 ? linkedIndex : 0, false);
+    }
+    renderList();
   } else {
     overlay.appendChild(renderEmptyState());
-  }
-  const sessionButtons = Array.from(overlay.querySelectorAll("[data-role='session-item']"));
-  let focusedIndex = sessionButtons.length ? 0 : -1;
-  function setFocusedIndex(nextIndex) {
-    if (!sessionButtons.length) {
-      focusedIndex = -1;
-      return;
-    }
-    const count = sessionButtons.length;
-    focusedIndex = (nextIndex % count + count) % count;
-    sessionButtons.forEach((button, index) => {
-      button.style.cssText = STYLE.itemButton + (index === focusedIndex ? `;${STYLE.itemButtonFocused}` : "");
-    });
-    sessionButtons[focusedIndex].focus({ preventScroll: true });
   }
   function onKeyDown(event) {
     if (!overlay.isConnected)
@@ -887,7 +944,8 @@ function sessionPickerScript(items, context, currentSessionId) {
   }
   document.addEventListener("keydown", onKeyDown, true);
   globalThis.__opc_cleanupSessionPicker = cleanupKeyboard;
-  setFocusedIndex(0);
+  if (focusedIndex >= 0)
+    setFocusedIndex(focusedIndex, false);
 }
 async function showSessionPicker(tabId, sessions, context = { instanceCount: sessions.length ? 1 : 0 }, currentSessionId = null) {
   await chrome.scripting.executeScript({
