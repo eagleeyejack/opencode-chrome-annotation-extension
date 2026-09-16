@@ -5,13 +5,21 @@
     <title>OpenCode Annotation</title>
     <style>
       :root { color-scheme: light; }
+      * { box-sizing: border-box; }
       body {
         margin: 0;
         padding: 10px;
         font: 12px/1.4 ui-sans-serif, system-ui, sans-serif;
         color: #111111;
         background: #ffffff;
+        overflow-x: hidden;
       }
+      button, textarea { font: inherit; }
+      button { transition: background 120ms ease, color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
+      :focus-visible { outline: 2px solid #818cf8; outline-offset: 1px; }
+      .ic { flex: none; }
+      .ic * { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+      .logo { width: 20px; height: 20px; border-radius: 6px; flex: none; }
       .root { display: flex; flex-direction: column; gap: 10px; }
       .section { display: flex; flex-direction: column; gap: 8px; }
       .contents { display: contents; }
@@ -62,7 +70,7 @@
       .header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
       .title { font-weight: 700; }
       .hint { color: #6b7280; }
-      .grow { flex: 1 1 auto; }
+      .grow { flex: 1 1 auto; min-width: 0; }
       .row { display: flex; align-items: center; gap: 8px; }
       .row.end { justify-content: flex-end; }
       .row.between { justify-content: space-between; align-items: flex-start; }
@@ -75,9 +83,13 @@
         gap: 8px;
       }
       .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
         border: 1px solid rgba(0,0,0,0.12);
         border-radius: 999px;
-        padding: 6px 10px;
+        padding: 6px 11px;
         background: transparent;
         color: #111111;
         font: 600 11px/1 ui-sans-serif, system-ui, sans-serif;
@@ -85,8 +97,14 @@
         white-space: nowrap;
       }
       .btn:hover:not(:disabled) { background: #f3f4f6; }
-      .btn:disabled { opacity: 0.5; cursor: default; }
-      .btn.primary { border: 0; background: #111111; color: #ffffff; }
+      .btn:active:not(:disabled) { transform: scale(0.97); }
+      .btn:disabled { opacity: 0.45; cursor: default; }
+      .btn.primary {
+        border: 0;
+        background: #111111;
+        color: #ffffff;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+      }
       .btn.primary:hover:not(:disabled) { background: #2b2b2b; }
       .btn.full { width: 100%; padding: 8px 10px; }
       .btn.small { padding: 5px 8px; }
@@ -117,14 +135,17 @@
         box-sizing: border-box;
         font: 12px/1.4 ui-sans-serif, system-ui, sans-serif;
       }
+      .textarea:focus { border-color: #818cf8; outline: none; }
       .element-info {
-        color: #6b7280;
+        color: #4b5563;
         word-break: break-all;
         background: #f9fafb;
         border-radius: 6px;
         padding: 6px 8px;
+        font: 500 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
       }
-      .queue-item { border-top: 1px solid rgba(0,0,0,0.08); padding: 6px 0; }
+      .queue-item { border-top: 1px solid rgba(0,0,0,0.08); padding: 6px 2px; }
+      .queue-item:hover { background: #fafafa; }
       .queue-meta {
         color: #6b7280;
         font-size: 11px;
@@ -132,6 +153,7 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         flex: 1 1 auto;
+        min-width: 0;
       }
       .queue-comment { margin-top: 3px; word-break: break-word; line-height: 1.45; }
       .linked-label {
@@ -170,11 +192,18 @@
         border-radius: 0;
         font: 12px/1.35 ui-sans-serif, system-ui, sans-serif;
       }
-      .session-row { display: flex; align-items: stretch; gap: 2px; }
-      .session-row .session-item { flex: 1 1 auto; }
-      .session-item:hover { background: #f3f4f6; }
-      .session-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .session-meta { margin-top: 2px; color: #6b7280; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .session-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        border-radius: 8px;
+        padding: 0 4px 0 0;
+      }
+      .session-row:hover { background: #f3f4f6; }
+      .session-row .session-item { flex: 1 1 auto; min-width: 0; }
+      .session-name { font-weight: 600; overflow-wrap: anywhere; }
+      .session-meta { margin-top: 2px; color: #6b7280; font-size: 11px; overflow-wrap: anywhere; }
+      .session-date { flex: none; color: #9ca3af; font-size: 10px; }
       .linked-chip {
         display: inline-block;
         margin-left: 6px;
@@ -207,6 +236,7 @@
         color: #dc2626;
         font: 700 11px/1 ui-sans-serif, system-ui, sans-serif;
       }
+      .empty-icon { color: #9ca3af; margin-bottom: 2px; }
       .empty-title { font-weight: 700; margin-bottom: 6px; }
       .empty-text { margin: 0 0 8px; color: #6b7280; line-height: 1.45; }
       .empty-list { margin: 0; padding-left: 18px; color: #6b7280; line-height: 1.5; }
