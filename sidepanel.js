@@ -12,10 +12,13 @@ const state = {
   activeProject: "",
   confirmCloseId: null,
   confirmCloseTimer: null,
+  settingsOpen: false,
   draft: "",
   pending: false,
-  banner: null,
-  bannerTimer: null,
+  toast: null,
+  toastTimer: null,
+  addedTick: false,
+  tickTimer: null,
   focusTextarea: false
 };
 
@@ -64,13 +67,13 @@ function refreshIcon() {
   return svgIcon("M10 6a4 4 0 1 1-1.17-2.83M10 1.5V3.5H8");
 }
 
-function setBanner(kind, text, ttl = 5000) {
-  state.banner = { kind, text };
+function toast(kind, text, ttl = 4500) {
+  state.toast = { kind, text };
   render();
-  if (state.bannerTimer)
-    clearTimeout(state.bannerTimer);
-  state.bannerTimer = setTimeout(() => {
-    state.banner = null;
+  if (state.toastTimer)
+    clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(() => {
+    state.toast = null;
     render();
   }, ttl);
 }
@@ -106,6 +109,8 @@ async function refreshState() {
         state.claim = response.claim;
         state.queue = Array.isArray(response.queue) ? response.queue : [];
         state.selection = response.selection;
+        if (!response.claim)
+          state.settingsOpen = false;
         if (!response.selection)
           state.draft = "";
         if (previousPhase !== "locked" && response.selection?.phase === "locked")
@@ -129,10 +134,10 @@ async function fetchSessions() {
       state.sessionsContext = response.context || null;
       state.activeProject = "";
     } else {
-      setBanner("error", response?.error || "Failed to fetch sessions");
+      toast("error", response?.error || "Failed to fetch sessions");
     }
   } catch (error) {
-    setBanner("error", error?.message || String(error));
+    toast("error", error?.message || String(error));
   }
   state.fetchingSessions = false;
   render();
@@ -142,9 +147,9 @@ async function connectSession(session) {
   try {
     const response = await sendPanelMessage({ type: "connect_tab_to_session", session });
     if (!response?.ok)
-      setBanner("error", response?.error || "Failed to connect");
+      toast("error", response?.error || "Failed to connect");
   } catch (error) {
-    setBanner("error", error?.message || String(error));
+    toast("error", error?.message || String(error));
   }
 }
 
@@ -172,23 +177,27 @@ async function closeSession(session) {
       baseUrl: session.baseUrl
     });
     if (response?.ok) {
-      setBanner("success", "Session closed", 2500);
+      toast("success", "Session closed", 2500);
       fetchSessions();
       return;
     }
-    setBanner("error", response?.error || "Failed to close session");
+    toast("error", response?.error || "Failed to close session");
   } catch (error) {
-    setBanner("error", error?.message || String(error));
+    toast("error", error?.message || String(error));
   }
 }
 
 async function disconnectTab() {
   try {
     const response = await sendPanelMessage({ type: "disconnect_tab" });
-    if (!response?.ok)
-      setBanner("error", response?.error || "Failed to disconnect");
+    if (!response?.ok) {
+      toast("error", response?.error || "Failed to disconnect");
+      return;
+    }
+    state.settingsOpen = false;
+    render();
   } catch (error) {
-    setBanner("error", error?.message || String(error));
+    toast("error", error?.message || String(error));
   }
 }
 
@@ -198,9 +207,9 @@ async function startAnnotation() {
     await ensureOriginAccess();
     const response = await chrome.runtime.sendMessage({ type: "panel_start_annotation", tabId: tab?.id });
     if (!response?.ok)
-      setBanner("error", response?.error || "Failed to start selection");
+      toast("error", response?.error || "Failed to start selection");
   } catch (error) {
-    setBanner("error", error?.message || String(error));
+    toast("error", error?.message || String(error));
   }
   render();
 }
@@ -209,14 +218,14 @@ async function cancelSelection() {
   try {
     const response = await sendPanelMessage({ type: "panel_cancel_selection" });
     if (!response?.ok) {
-      setBanner("error", response?.error || "Failed to cancel selection");
+      toast("error", response?.error || "Failed to cancel selection");
       return;
     }
     state.selection = null;
     state.draft = "";
     render();
   } catch (error) {
-    setBanner("error", error?.message || String(error));
+    toast("error", error?.message || String(error));
   }
 }
 
@@ -226,14 +235,14 @@ async function reselectElement() {
   try {
     const response = await sendPanelMessage({ type: "panel_reselect_element" });
     if (!response?.ok) {
-      setBanner("error", response?.error || "Failed to reselect");
+      toast("error", response?.error || "Failed to reselect");
       return;
     }
     if (state.selection)
       state.selection = { phase: "hover", element: null, viewport: null };
     render();
   } catch (error) {
-    setBanner("error", error?.message || String(error));
+    toast("error", error?.message || String(error));
   }
 }
 
@@ -252,12 +261,18 @@ async function submitSelection(finish) {
       state.draft = "";
       if (finish !== true)
         state.selection = { phase: "hover", element: null, viewport: null };
-      setBanner("success", "Added to queue", 2500);
+      state.addedTick = true;
+      if (state.tickTimer)
+        clearTimeout(state.tickTimer);
+      state.tickTimer = setTimeout(() => {
+        state.addedTick = false;
+        render();
+      }, 1600);
     } else {
-      setBanner("error", response?.error || "Failed to add annotation");
+      toast("error", response?.error || "Failed to add annotation");
     }
   } catch (error) {
-    setBanner("error", error?.message || String(error));
+    toast("error", error?.message || String(error));
   }
   state.pending = false;
   render();
@@ -267,7 +282,7 @@ async function sendQueue() {
   if (state.pending)
     return;
   if (!state.queue.length) {
-    setBanner("error", "No queued annotations to send");
+    toast("error", "No queued annotations to send");
     return;
   }
   state.pending = true;
@@ -276,12 +291,12 @@ async function sendQueue() {
     const response = await sendPanelMessage({ type: "send_queued_annotations" });
     if (response?.ok) {
       const sent = response.sent || 0;
-      setBanner("success", sent === 1 ? "Sent 1 annotation to OpenCode" : `Sent ${sent} annotations to OpenCode`);
+      toast("success", sent === 1 ? "Sent 1 annotation to OpenCode" : `Sent ${sent} annotations to OpenCode`);
     } else {
-      setBanner("error", response?.error || "Failed to send annotations");
+      toast("error", response?.error || "Failed to send annotations");
     }
   } catch (error) {
-    setBanner("error", error?.message || String(error));
+    toast("error", error?.message || String(error));
   }
   state.pending = false;
   render();
@@ -291,9 +306,9 @@ async function clearQueue() {
   try {
     const response = await sendPanelMessage({ type: "clear_queue" });
     if (!response?.ok)
-      setBanner("error", response?.error || "Failed to clear queue");
+      toast("error", response?.error || "Failed to clear queue");
   } catch (error) {
-    setBanner("error", error?.message || String(error));
+    toast("error", error?.message || String(error));
   }
 }
 
@@ -301,9 +316,9 @@ async function removeQueued(id) {
   try {
     const response = await sendPanelMessage({ type: "remove_queued_annotation", id });
     if (!response?.ok)
-      setBanner("error", response?.error || "Failed to remove annotation");
+      toast("error", response?.error || "Failed to remove annotation");
   } catch (error) {
-    setBanner("error", error?.message || String(error));
+    toast("error", error?.message || String(error));
   }
 }
 
@@ -312,8 +327,8 @@ function projectNameFor(directory) {
   return segments.length ? segments[segments.length - 1] : directory || "Unknown project";
 }
 
-function bannerNode() {
-  return h("div", { className: `banner ${state.banner.kind}`, text: state.banner.text });
+function toastNode() {
+  return h("div", { className: `toast ${state.toast.kind}`, text: state.toast.text });
 }
 
 function sessionsNode() {
@@ -446,30 +461,73 @@ function emptyStateNode() {
   ]);
 }
 
-function selectionNode() {
-  const root = h("div", { className: "card" });
-  const selection = state.selection;
-  if (!selection) {
-    root.appendChild(h("button", {
-      className: "btn primary full",
-      text: "Select element on page",
+function toolbarNode() {
+  const children = [];
+  if (state.selection) {
+    children.push(h("button", {
+      className: "btn",
+      text: "Cancel",
+      attrs: { type: "button" },
+      on: { click: cancelSelection }
+    }));
+  } else {
+    children.push(h("button", {
+      className: "btn primary",
+      text: "Select element",
       attrs: { type: "button" },
       on: { click: startAnnotation }
     }));
-    return root;
+    if (state.addedTick)
+      children.push(h("span", { className: "added-tick", text: "✓ Added" }));
   }
-  if (selection.phase === "hover") {
-    root.appendChild(h("div", { className: "row" }, [
-      h("div", { className: "hint grow", text: "Click an element on the page…" }),
+  children.push(h("button", {
+    className: "btn primary",
+    text: "Send all to OpenCode",
+    attrs: { type: "button" },
+    disabled: state.pending || !state.queue.length,
+    on: { click: sendQueue }
+  }));
+  children.push(h("div", { className: "grow" }));
+  children.push(h("button", {
+    className: "icon-btn",
+    text: "⋯",
+    attrs: { type: "button", "aria-label": "Settings", title: "Settings" },
+    on: {
+      click: () => {
+        state.settingsOpen = !state.settingsOpen;
+        render();
+      }
+    }
+  }));
+  return h("div", { className: "toolbar" }, children);
+}
+
+function settingsNode() {
+  const claim = state.claim;
+  return h("div", { className: "card" }, [
+    h("div", { className: "hint", text: `Linked chat: ${claim.sessionLabel || claim.sessionId || "Connected"}` }),
+    h("div", { className: "row end" }, [
       h("button", {
         className: "btn small",
-        text: "Cancel",
+        text: "Disconnect",
         attrs: { type: "button" },
-        on: { click: cancelSelection }
+        on: { click: disconnectTab }
       })
-    ]));
-    return root;
+    ])
+  ]);
+}
+
+function selectionNode() {
+  const selection = state.selection;
+  if (!selection)
+    return null;
+  if (selection.phase === "hover") {
+    return h("div", { className: "row" }, [
+      h("div", { className: "hint grow", text: "Click an element on the page…" }),
+      state.addedTick ? h("span", { className: "added-tick", text: "✓ Added" }) : null
+    ]);
   }
+  const root = h("div", { className: "card" });
   const info = selection.element || {};
   root.appendChild(h("div", {
     className: "element-info",
@@ -506,37 +564,35 @@ function selectionNode() {
       on: { click: () => submitSelection(true) }
     })
   ]));
-  root.appendChild(h("div", { className: "row" }, [
-    h("button", {
-      className: "btn small grow",
-      text: "Reselect",
-      attrs: { type: "button" },
-      disabled: state.pending,
-      on: { click: reselectElement }
-    }),
-    h("button", {
-      className: "btn small grow",
-      text: "Cancel",
-      attrs: { type: "button" },
-      disabled: state.pending,
-      on: { click: cancelSelection }
-    })
-  ]));
+  root.appendChild(h("button", {
+    className: "btn small",
+    text: "Reselect",
+    attrs: { type: "button" },
+    disabled: state.pending,
+    on: { click: reselectElement }
+  }));
   return root;
 }
 
 function queueNode() {
-  const root = h("div", { className: "card" });
-  root.appendChild(h("div", { className: "title", text: `Queued annotations (${state.queue.length})` }));
-  if (!state.queue.length) {
-    root.appendChild(h("div", { className: "hint", text: "No queued annotations yet" }));
-    return root;
-  }
+  if (!state.queue.length)
+    return null;
+  const root = h("div", { className: "section" });
+  root.appendChild(h("div", { className: "row between" }, [
+    h("div", { className: "title", text: "Queued" }),
+    h("button", {
+      className: "btn small",
+      text: "Clear",
+      attrs: { type: "button" },
+      on: { click: clearQueue }
+    })
+  ]));
+  const listContainer = h("div", { className: "list" });
   state.queue.forEach((entry, index) => {
     const rawComment = typeof entry.comment === "string" ? entry.comment : "";
     const excerpt = rawComment.length > 140 ? `${rawComment.slice(0, 140)}...` : rawComment;
     const label = `${entry.tag || ""} ${entry.selector || ""}`.trim() || "element";
-    root.appendChild(h("div", { className: "queue-item" }, [
+    listContainer.appendChild(h("div", { className: "queue-item" }, [
       h("div", { className: "row between" }, [
         h("div", { className: "queue-meta", text: `${index + 1}. ${label}` }),
         h("button", {
@@ -549,43 +605,21 @@ function queueNode() {
       excerpt ? h("div", { className: "queue-comment", text: excerpt }) : null
     ]));
   });
-  root.appendChild(h("div", { className: "row end" }, [
-    h("button", {
-      className: "btn small",
-      text: "Clear",
-      attrs: { type: "button" },
-      on: { click: clearQueue }
-    }),
-    h("button", {
-      className: "btn primary small",
-      text: "Send all to OpenCode",
-      attrs: { type: "button" },
-      disabled: state.pending,
-      on: { click: sendQueue }
-    })
-  ]));
+  root.appendChild(listContainer);
   return root;
 }
 
 function connectedNode() {
-  const root = h("div", { className: "root" });
-  const claim = state.claim;
-  root.appendChild(h("div", { className: "card" }, [
-    h("div", { className: "row between" }, [
-      h("div", { className: "grow" }, [
-        h("div", { className: "linked-label", text: claim.sessionLabel || claim.sessionId || "Connected" }),
-        h("div", { className: "hint", text: "Linked OpenCode chat" })
-      ]),
-      h("button", {
-        className: "btn small",
-        text: "Disconnect",
-        attrs: { type: "button" },
-        on: { click: disconnectTab }
-      })
-    ])
-  ]));
-  root.appendChild(selectionNode());
-  root.appendChild(queueNode());
+  const root = h("div", { className: "contents" });
+  root.appendChild(toolbarNode());
+  if (state.settingsOpen)
+    root.appendChild(settingsNode());
+  const selection = selectionNode();
+  if (selection)
+    root.appendChild(selection);
+  const queue = queueNode();
+  if (queue)
+    root.appendChild(queue);
   return root;
 }
 
@@ -595,12 +629,12 @@ function buildUI() {
     root.appendChild(h("div", { className: "hint", text: "Loading…" }));
     return root;
   }
-  if (state.banner)
-    root.appendChild(bannerNode());
   if (state.claim)
     root.appendChild(connectedNode());
   else
     root.appendChild(sessionsNode());
+  if (state.toast)
+    root.appendChild(toastNode());
   return root;
 }
 
