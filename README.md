@@ -17,9 +17,11 @@ Add the plugin to your OpenCode config:
 }
 ```
 
-Install the Chrome extension from the Chrome Web Store:
+Install the extension from this repo (your own Chrome Web Store listing can be added later):
 
-https://chromewebstore.google.com/detail/abeihanpaeioklkhioiigklonbomhjfd
+1. Open `chrome://extensions`.
+2. Enable Developer mode.
+3. Click **Load unpacked** and select this directory.
 
 ## How It Works
 
