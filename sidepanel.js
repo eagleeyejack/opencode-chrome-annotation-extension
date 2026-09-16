@@ -73,19 +73,6 @@ function setBanner(kind, text, ttl = 5000) {
   }, ttl);
 }
 
-function originPatternFrom(url) {
-  if (typeof url !== "string" || !url)
-    return null;
-  try {
-    const parsed = new URL(url);
-    if (!/^https?:$/.test(parsed.protocol))
-      return null;
-    return `${parsed.origin}/*`;
-  } catch {
-    return null;
-  }
-}
-
 async function currentTab() {
   const win = await chrome.windows.getCurrent();
   const [tab] = await chrome.tabs.query({ active: true, windowId: win.id });
@@ -97,16 +84,13 @@ async function sendPanelMessage(payload) {
   return chrome.runtime.sendMessage({ ...payload, tabId: tab?.id });
 }
 
-async function ensureOriginAccess(tab) {
-  const origin = originPatternFrom(tab?.url);
-  if (!origin)
-    throw new Error("This page cannot be annotated. Open an http(s) page and try again.");
-  const granted = await chrome.permissions.contains({ origins: [origin] });
+async function ensureOriginAccess() {
+  const granted = await chrome.permissions.contains({ origins: ["<all_urls>"] });
   if (granted)
     return;
-  const requested = await chrome.permissions.request({ origins: [origin] });
+  const requested = await chrome.permissions.request({ origins: ["<all_urls>"] });
   if (!requested)
-    throw new Error("Site access was denied for this page.");
+    throw new Error("Site access was denied. The extension needs access to pages to select elements and capture screenshots.");
 }
 
 async function refreshState() {
@@ -174,7 +158,7 @@ async function disconnectTab() {
 async function startAnnotation() {
   try {
     const tab = await currentTab();
-    await ensureOriginAccess(tab);
+    await ensureOriginAccess();
     const response = await chrome.runtime.sendMessage({ type: "panel_start_annotation", tabId: tab?.id });
     if (!response?.ok)
       setBanner("error", response?.error || "Failed to start selection");
