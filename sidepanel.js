@@ -296,7 +296,7 @@ function bannerNode() {
 }
 
 function sessionsNode() {
-  const root = h("div", { className: "card" });
+  const root = h("div", { className: "section" });
   root.appendChild(h("div", { className: "header" }, [
     h("div", { className: "title", text: "Connect this tab to OpenCode" }),
     h("button", {
@@ -351,12 +351,6 @@ function sessionsNode() {
   const visibleGroups = state.activeProject ? groups.filter((group) => group.directory === state.activeProject) : groups;
   const linkedId = state.claim?.sessionId || null;
   for (const group of visibleGroups) {
-    if (!state.activeProject && visibleGroups.length > 1) {
-      listContainer.appendChild(h("div", { className: "session-group-header" }, [
-        h("span", { className: "group-name", text: projectNameFor(group.directory) }),
-        h("span", { className: "group-path", text: group.directory })
-      ]));
-    }
     for (const item of group.items) {
       const isLinked = Boolean(linkedId) && item.id === linkedId;
       listContainer.appendChild(h("button", {
