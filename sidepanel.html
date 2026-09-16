@@ -1,0 +1,161 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>OpenCode Annotation</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        padding: 10px;
+        font: 12px/1.4 ui-sans-serif, system-ui, sans-serif;
+        color: #111111;
+        background: #ffffff;
+      }
+      .root { display: flex; flex-direction: column; gap: 10px; }
+      .header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .title { font-weight: 700; }
+      .hint { color: #6b7280; }
+      .grow { flex: 1 1 auto; }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .row.end { justify-content: flex-end; }
+      .row.between { justify-content: space-between; align-items: flex-start; }
+      .card {
+        border: 1px solid rgba(0,0,0,0.12);
+        border-radius: 10px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .btn {
+        border: 1px solid rgba(0,0,0,0.12);
+        border-radius: 999px;
+        padding: 6px 10px;
+        background: transparent;
+        color: #111111;
+        font: 600 11px/1 ui-sans-serif, system-ui, sans-serif;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .btn:hover:not(:disabled) { background: #f3f4f6; }
+      .btn:disabled { opacity: 0.5; cursor: default; }
+      .btn.primary { border: 0; background: #111111; color: #ffffff; }
+      .btn.primary:hover:not(:disabled) { background: #2b2b2b; }
+      .btn.full { width: 100%; padding: 8px 10px; }
+      .btn.small { padding: 5px 8px; }
+      .icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: #111111;
+        cursor: pointer;
+        padding: 0;
+        flex: none;
+      }
+      .icon-btn:hover { background: #f3f4f6; }
+      .banner { padding: 8px 10px; border-radius: 8px; font-weight: 600; }
+      .banner.error { background: #ffe4e6; }
+      .banner.success { background: #d1fae5; }
+      .textarea {
+        width: 100%;
+        min-height: 84px;
+        resize: vertical;
+        border-radius: 8px;
+        border: 1px solid rgba(0,0,0,0.12);
+        background: #ffffff;
+        color: #111111;
+        padding: 8px;
+        box-sizing: border-box;
+        font: 12px/1.4 ui-sans-serif, system-ui, sans-serif;
+      }
+      .element-info {
+        color: #6b7280;
+        word-break: break-all;
+        background: #f9fafb;
+        border-radius: 6px;
+        padding: 6px 8px;
+      }
+      .queue-item { border-top: 1px solid rgba(0,0,0,0.08); padding: 6px 0; }
+      .queue-item:first-of-type { border-top: 0; }
+      .queue-meta {
+        color: #6b7280;
+        font-size: 11px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1 1 auto;
+      }
+      .queue-comment { margin-top: 3px; word-break: break-word; line-height: 1.45; }
+      .linked-label {
+        font-weight: 700;
+        max-width: 190px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .session-group-header {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin-top: 8px;
+        padding-top: 6px;
+        border-top: 1px solid rgba(0,0,0,0.08);
+      }
+      .group-name { font-weight: 700; font-size: 11px; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .group-path { color: #6b7280; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .session-item {
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: 7px 4px;
+        border: 0;
+        border-bottom: 1px solid rgba(0,0,0,0.08);
+        background: transparent;
+        color: #111111;
+        cursor: pointer;
+        border-radius: 0;
+        font: 12px/1.35 ui-sans-serif, system-ui, sans-serif;
+      }
+      .session-item:hover { background: #f3f4f6; }
+      .session-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .session-meta { margin-top: 2px; color: #6b7280; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .linked-chip {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        background: #bfdbfe;
+        color: #111111;
+        font: 700 10px/1.4 ui-sans-serif, system-ui, sans-serif;
+      }
+      .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+      .chip {
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(0,0,0,0.12);
+        background: transparent;
+        color: #111111;
+        cursor: pointer;
+        font: 600 11px/1 ui-sans-serif, system-ui, sans-serif;
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .chip.active { background: #111111; color: #ffffff; border-color: #111111; }
+      .list { display: flex; flex-direction: column; }
+      .empty-title { font-weight: 700; margin-bottom: 6px; }
+      .empty-text { margin: 0 0 8px; color: #6b7280; line-height: 1.45; }
+      .empty-list { margin: 0; padding-left: 18px; color: #6b7280; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

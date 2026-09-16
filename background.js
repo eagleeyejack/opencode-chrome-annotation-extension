@@ -30,6 +30,40 @@ var DISCOVERY_TIMEOUT_MS = 200;
 var CONNECTION_CHECK_INTERVAL_MS = 1e4;
 var CONNECTION_STATUS_TIMEOUT_MS = 1200;
 
+// extension-src/side-panel.ts
+var SIDE_PANEL_SUPPORTED = typeof chrome.sidePanel !== "undefined";
+var selectionSessions = new Map();
+var BROADCAST_MESSAGE_TYPES = new Set([
+  "connect_tab_to_session",
+  "disconnect_tab",
+  "start_annotation_from_overlay",
+  "remove_queued_annotation",
+  "clear_queue",
+  "send_queued_annotations",
+  "panel_start_annotation",
+  "panel_cancel_selection",
+  "panel_submit_annotation",
+  "panel_reselect_element",
+  "selection_pick",
+  "selection_cancel",
+  "selection_exited"
+]);
+function broadcastPanelChanged() {
+  try {
+    const result = chrome.runtime.sendMessage({ type: "panel_state_changed" });
+    if (result && typeof result.catch === "function")
+      result.catch(() => {});
+  } catch {}
+}
+function toQueueSummary(entry) {
+  return {
+    id: entry?.id,
+    comment: entry?.comment,
+    tag: entry?.element?.tag,
+    selector: entry?.element?.selector
+  };
+}
+
 // extension-src/server-api.ts
 async function fetchJson(url, options = {}) {
   const {
@@ -137,6 +171,8 @@ async function checkServerStatus(baseUrl, timeoutMs) {
 
 // extension-src/ui-overlays.ts
 async function injectConnectionOverlay(tabId, openQueue = false) {
+  if (SIDE_PANEL_SUPPORTED)
+    return;
   const queueEntries = annotationQueues.list(tabId).map((entry) => ({
     id: entry.id,
     comment: entry.comment,
@@ -948,6 +984,8 @@ function sessionPickerScript(items, context, currentSessionId) {
     setFocusedIndex(focusedIndex, false);
 }
 async function showSessionPicker(tabId, sessions, context = { instanceCount: sessions.length ? 1 : 0 }, currentSessionId = null) {
+  if (SIDE_PANEL_SUPPORTED)
+    return;
   await chrome.scripting.executeScript({
     target: { tabId },
     world: "ISOLATED",
@@ -1229,6 +1267,101 @@ async function runAnnotationPicker(tabId) {
   return picked;
 }
 
+// extension-src/side-panel-selection.ts
+async function sendSelectionCommand(tabId, command) {
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: command });
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function exitSelectionSession(tabId) {
+  await sendSelectionCommand(tabId, "opc_selection_exit");
+  selectionSessions.delete(tabId);
+}
+async function startSelectionSession(tabId) {
+  const tab = await chrome.tabs.get(tabId);
+  if (!tab?.id)
+    throw new Error("No active tab found");
+  const claim = claimedTabs.get(tabId);
+  if (!claim?.baseUrl || !claim?.sessionId)
+    throw new Error("Tab is not connected to an OpenCode instance");
+  try {
+    await postJson(claim.baseUrl, "/claim", claimRequestBody(tabId, claim.sessionId));
+  } catch (error) {
+    warnExtension("Failed to refresh upstream tab claim before annotating", {
+      tabId,
+      sessionId: claim.sessionId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+  if (selectionSessions.has(tabId)) {
+    const reentered = await sendSelectionCommand(tabId, "opc_selection_reenter");
+    if (reentered) {
+      selectionSessions.set(tabId, { phase: "hover", element: null, viewport: null });
+      return;
+    }
+  }
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: ["injected/selection.js"]
+  });
+  selectionSessions.set(tabId, { phase: "hover", element: null, viewport: null });
+}
+async function submitPanelAnnotation(tabId, message) {
+  const session = selectionSessions.get(tabId);
+  if (!session || session.phase !== "locked" || !session.element)
+    throw new Error("No element is selected");
+  const claim = claimedTabs.get(tabId);
+  if (!claim?.baseUrl || !claim?.sessionId)
+    throw new Error("Tab is not connected to an OpenCode instance");
+  const element = session.element;
+  const viewport = session.viewport;
+  const comment = typeof message.comment === "string" ? message.comment.trim() : "";
+  await exitSelectionSession(tabId);
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  const tab = await chrome.tabs.get(tabId);
+  const screenshot = await captureVisibleTabWithTimeout(tab.windowId);
+  const cropped = await cropScreenshot(tabId, screenshot, element.rect, viewport);
+  const dataUrl = cropped || screenshot;
+  logExtension("Captured annotation screenshot from side panel", {
+    tabId,
+    cropped: !!cropped,
+    bytesApprox: Math.round(dataUrl.length * 3 / 4)
+  });
+  try {
+    await annotationQueues.add(tabId, {
+      comment,
+      page: {
+        url: tab.url || "",
+        title: tab.title || ""
+      },
+      element,
+      viewport,
+      screenshot: {
+        mime: "image/png",
+        dataUrl
+      },
+      createdAt: Date.now()
+    });
+  } catch (error) {
+    warnExtension("Failed to persist annotation queue", {
+      tabId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    await showAnnotationError(tabId, "Annotation queue is full - send or remove queued annotations").catch(() => {});
+    throw new Error("Annotation queue is full - send or remove queued annotations");
+  }
+  logExtension("Annotation queued from side panel", {
+    tabId,
+    selector: element?.selector,
+    commentLength: comment.length
+  });
+  if (message.finish !== true)
+    await startSelectionSession(tabId);
+}
+
 // extension-src/connection-monitor.ts
 function createConnectionMonitor({ claimedTabs, removeConnectionOverlay: removeConnectionOverlay2, extensionVersion }) {
   let timer = null;
@@ -1288,6 +1421,7 @@ function createConnectionMonitor({ claimedTabs, removeConnectionOverlay: removeC
       claimedTabs.delete(tabId);
       await removeConnectionOverlay2(tabId);
     }
+    broadcastPanelChanged();
     warnExtension("Lost connection to OpenCode instance", {
       disconnectedInstances: Array.from(disconnected),
       remainingClaims: claimedTabs.size()
@@ -1472,7 +1606,15 @@ var MESSAGE_TYPE = {
   SHOW_QUEUE: "show_annotation_queue",
   REMOVE_QUEUED: "remove_queued_annotation",
   CLEAR_QUEUE: "clear_queue",
-  SEND_QUEUE: "send_queued_annotations"
+  SEND_QUEUE: "send_queued_annotations",
+  PANEL_GET_STATE: "panel_get_state",
+  PANEL_START: "panel_start_annotation",
+  PANEL_CANCEL: "panel_cancel_selection",
+  PANEL_SUBMIT: "panel_submit_annotation",
+  PANEL_RESELECT: "panel_reselect_element",
+  SELECTION_PICK: "selection_pick",
+  SELECTION_CANCEL: "selection_cancel",
+  SELECTION_EXITED: "selection_exited"
 };
 function isSupportedMessage(message) {
   const type = typeof message === "object" && message !== null ? message.type : undefined;
@@ -1562,7 +1704,17 @@ async function sendQueuedAnnotations(tab) {
   await injectConnectionOverlay(tab.id);
   return { ok: true, sent, failed: 0 };
 }
-async function runMessageAction(message, tab) {
+async function runMessageAction(message, tab, sender) {
+  if (message.type === "panel_get_state") {
+    const tabId = tab?.id;
+    return {
+      ok: true,
+      tab: tabId !== undefined ? { id: tabId, url: tab.url, title: tab.title } : null,
+      claim: tabId !== undefined ? claimedTabs.get(tabId) || null : null,
+      queue: tabId !== undefined ? annotationQueues.list(tabId).map(toQueueSummary) : [],
+      selection: tabId !== undefined ? selectionSessions.get(tabId) || null : null
+    };
+  }
   if (message.type === "connect_tab_to_session") {
     logExtension("Session picker selection received", {
       tabId: tab?.id,
@@ -1578,10 +1730,63 @@ async function runMessageAction(message, tab) {
   }
   if (message.type === "refresh_sessions") {
     const { sessions, context } = await requestSessionState();
+    if (SIDE_PANEL_SUPPORTED)
+      return { ok: true, sessions, context };
     if (!tab.id)
       throw new Error("No active tab found");
     await showSessionPicker(tab.id, sessions, context, claimedTabs.get(tab.id)?.sessionId);
     return { ok: true, sessions: sessions.length };
+  }
+  if (message.type === "panel_start_annotation") {
+    if (!tab.id)
+      throw new Error("No active tab found");
+    await startSelectionSession(tab.id);
+    return { ok: true };
+  }
+  if (message.type === "panel_cancel_selection") {
+    if (!tab.id)
+      throw new Error("No active tab found");
+    await exitSelectionSession(tab.id);
+    return { ok: true };
+  }
+  if (message.type === "panel_reselect_element") {
+    if (!tab.id)
+      throw new Error("No active tab found");
+    const reentered = await sendSelectionCommand(tab.id, "opc_selection_reenter");
+    if (reentered) {
+      const session = selectionSessions.get(tab.id);
+      if (session) {
+        session.phase = "hover";
+        session.element = null;
+        session.viewport = null;
+      }
+    } else {
+      selectionSessions.delete(tab.id);
+      await startSelectionSession(tab.id);
+    }
+    return { ok: true };
+  }
+  if (message.type === "panel_submit_annotation") {
+    if (!tab.id)
+      throw new Error("No active tab found");
+    await submitPanelAnnotation(tab.id, message);
+    return { ok: true };
+  }
+  if (message.type === "selection_pick") {
+    const selectionTabId = sender?.tab?.id;
+    const session = selectionTabId !== undefined ? selectionSessions.get(selectionTabId) : null;
+    if (session) {
+      session.phase = "locked";
+      session.element = message.element || null;
+      session.viewport = message.viewport || null;
+    }
+    return { ok: true };
+  }
+  if (message.type === "selection_cancel" || message.type === "selection_exited") {
+    const selectionTabId = sender?.tab?.id;
+    if (selectionTabId !== undefined)
+      selectionSessions.delete(selectionTabId);
+    return { ok: true };
   }
   if (message.type === "show_annotation_queue") {
     if (!tab.id)
@@ -1615,9 +1820,20 @@ async function runMessageAction(message, tab) {
   return { ok: true, cancelled: !!result?.cancelled, queued: result?.queued || 0 };
 }
 async function handleMessage(message, sender) {
-  const tab = sender.tab?.id ? sender.tab : await getActiveTab();
+  let tab = null;
+  if (Number.isFinite(message?.tabId)) {
+    try {
+      tab = await chrome.tabs.get(message.tabId);
+    } catch {
+      tab = null;
+    }
+  }
+  if (!tab && sender.tab?.id)
+    tab = sender.tab;
+  if (!tab)
+    tab = await getActiveTab();
   try {
-    return await runMessageAction(message, tab);
+    return await runMessageAction(message, tab, sender);
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
     if (message.type === "connect_tab_to_session") {
@@ -1650,6 +1866,7 @@ async function claimTabForSession(tab, session) {
     extensionVersion
   });
   await injectConnectionOverlay(tab.id);
+  broadcastPanelChanged();
   monitor.ensure();
   logExtension("Connected tab to OpenCode session", {
     tabId: tab?.id,
@@ -1678,6 +1895,7 @@ async function disconnectTab(tab) {
   claimedTabs.delete(tab.id);
   annotationQueues.delete(tab.id);
   await removeConnectionOverlay(tab.id);
+  broadcastPanelChanged();
   if (!claimedTabs.size())
     monitor.stop();
   logExtension("Disconnected tab from OpenCode session", {
@@ -1804,9 +2022,18 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     disconnectTab({ ...tab, id: tabId }).catch(() => {});
     return;
   }
+  if (SIDE_PANEL_SUPPORTED) {
+    removeConnectionOverlay(tabId);
+    broadcastPanelChanged();
+    return;
+  }
   injectConnectionOverlay(tabId);
 });
 chrome.tabs.onActivated.addListener(({ tabId }) => {
+  if (SIDE_PANEL_SUPPORTED) {
+    broadcastPanelChanged();
+    return;
+  }
   const claim = claimedTabs.get(tabId);
   if (claim)
     injectConnectionOverlay(tabId);
@@ -1827,18 +2054,34 @@ async function restoreClaimState() {
       claimedTabs.delete(tabId);
     }
   }
+  broadcastPanelChanged();
   if (claimedTabs.size())
     monitor.ensure();
 }
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!isSupportedMessage(message))
     return false;
-  handleMessage(message, sender).then((response) => sendResponse(response)).catch((error) => {
+  handleMessage(message, sender).then((response) => {
+    if (BROADCAST_MESSAGE_TYPES.has(message.type))
+      broadcastPanelChanged();
+    sendResponse(response);
+  }).catch((error) => {
     sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
   });
   return true;
 });
 chrome.action.onClicked.addListener(async (clickedTab) => {
+  if (SIDE_PANEL_SUPPORTED) {
+    try {
+      await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+      await chrome.sidePanel.open({ windowId: clickedTab.windowId });
+    } catch (error) {
+      warnExtension("Failed to open side panel", {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+    return;
+  }
   try {
     const tab = clickedTab?.id ? clickedTab : await getActiveTab();
     if (!tab.id)
@@ -1855,6 +2098,13 @@ chrome.action.onClicked.addListener(async (clickedTab) => {
       await showAnnotationError(tab.id, message).catch(() => {});
   }
 });
+if (SIDE_PANEL_SUPPORTED) {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch((error) => {
+    warnExtension("Failed to set side panel behavior", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  });
+}
 restoreClaimState().catch((error) => {
   warnExtension("Failed to restore tab claims", { error: error instanceof Error ? error.message : String(error) });
 });
