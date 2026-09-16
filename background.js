@@ -40,6 +40,7 @@ var BROADCAST_MESSAGE_TYPES = new Set([
   "remove_queued_annotation",
   "clear_queue",
   "send_queued_annotations",
+  "close_session",
   "panel_start_annotation",
   "panel_cancel_selection",
   "panel_submit_annotation",
@@ -1607,6 +1608,7 @@ var MESSAGE_TYPE = {
   REMOVE_QUEUED: "remove_queued_annotation",
   CLEAR_QUEUE: "clear_queue",
   SEND_QUEUE: "send_queued_annotations",
+  CLOSE_SESSION: "close_session",
   PANEL_GET_STATE: "panel_get_state",
   PANEL_START: "panel_start_annotation",
   PANEL_CANCEL: "panel_cancel_selection",
@@ -1786,6 +1788,27 @@ async function runMessageAction(message, tab, sender) {
     const selectionTabId = sender?.tab?.id;
     if (selectionTabId !== undefined)
       selectionSessions.delete(selectionTabId);
+    return { ok: true };
+  }
+  if (message.type === "close_session") {
+    const sessionId = typeof message.sessionId === "string" ? message.sessionId : "";
+    const baseUrl = typeof message.baseUrl === "string" ? message.baseUrl : "";
+    if (!sessionId || !baseUrl)
+      throw new Error("sessionId and baseUrl are required");
+    try {
+      await postJson(baseUrl, "/session/close", { sessionId });
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      if (text.includes("404"))
+        throw new Error("This OpenCode plugin version cannot close sessions. Update the opencode-chrome-annotation plugin and restart OpenCode.");
+      throw error;
+    }
+    logExtension("Closed OpenCode session", { sessionId, baseUrl });
+    for (const [claimedTabId, claim] of Array.from(claimedTabs.entries())) {
+      if (claim?.sessionId !== sessionId)
+        continue;
+      await disconnectTab({ id: claimedTabId }).catch(() => {});
+    }
     return { ok: true };
   }
   if (message.type === "show_annotation_queue") {

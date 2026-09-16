@@ -129,6 +129,8 @@
         border-radius: 0;
         font: 12px/1.35 ui-sans-serif, system-ui, sans-serif;
       }
+      .session-row { display: flex; align-items: stretch; gap: 2px; }
+      .session-row .session-item { flex: 1 1 auto; }
       .session-item:hover { background: #f3f4f6; }
       .session-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .session-meta { margin-top: 2px; color: #6b7280; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -140,6 +142,29 @@
         background: #bfdbfe;
         color: #111111;
         font: 700 10px/1.4 ui-sans-serif, system-ui, sans-serif;
+      }
+      .session-close {
+        flex: none;
+        align-self: center;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: #9ca3af;
+        cursor: pointer;
+        padding: 0;
+        font: 700 13px/1 ui-sans-serif, system-ui, sans-serif;
+      }
+      .session-close:hover { background: #f3f4f6; color: #dc2626; }
+      .session-close.confirm {
+        width: auto;
+        padding: 0 8px;
+        color: #dc2626;
+        font: 700 11px/1 ui-sans-serif, system-ui, sans-serif;
       }
       .empty-title { font-weight: 700; margin-bottom: 6px; }
       .empty-text { margin: 0 0 8px; color: #6b7280; line-height: 1.45; }

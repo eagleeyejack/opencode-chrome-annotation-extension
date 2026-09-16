@@ -10,6 +10,8 @@ const state = {
   fetchingSessions: false,
   fetchingSessionsStarted: false,
   activeProject: "",
+  confirmCloseId: null,
+  confirmCloseTimer: null,
   draft: "",
   pending: false,
   banner: null,
@@ -118,6 +120,7 @@ async function refreshState() {
 async function fetchSessions() {
   state.fetchingSessions = true;
   state.fetchingSessionsStarted = true;
+  state.confirmCloseId = null;
   render();
   try {
     const response = await sendPanelMessage({ type: "refresh_sessions" });
@@ -140,6 +143,40 @@ async function connectSession(session) {
     const response = await sendPanelMessage({ type: "connect_tab_to_session", session });
     if (!response?.ok)
       setBanner("error", response?.error || "Failed to connect");
+  } catch (error) {
+    setBanner("error", error?.message || String(error));
+  }
+}
+
+function armConfirmClose(id) {
+  state.confirmCloseId = id;
+  if (state.confirmCloseTimer)
+    clearTimeout(state.confirmCloseTimer);
+  state.confirmCloseTimer = setTimeout(() => {
+    state.confirmCloseId = null;
+    render();
+  }, 4000);
+  render();
+}
+
+async function closeSession(session) {
+  state.confirmCloseId = null;
+  if (state.confirmCloseTimer) {
+    clearTimeout(state.confirmCloseTimer);
+    state.confirmCloseTimer = null;
+  }
+  try {
+    const response = await sendPanelMessage({
+      type: "close_session",
+      sessionId: session.id,
+      baseUrl: session.baseUrl
+    });
+    if (response?.ok) {
+      setBanner("success", "Session closed", 2500);
+      fetchSessions();
+      return;
+    }
+    setBanner("error", response?.error || "Failed to close session");
   } catch (error) {
     setBanner("error", error?.message || String(error));
   }
@@ -337,18 +374,35 @@ function sessionsNode() {
   for (const group of visibleGroups) {
     for (const item of group.items) {
       const isLinked = Boolean(linkedId) && item.id === linkedId;
-      listContainer.appendChild(h("button", {
-        className: "session-item",
-        attrs: { type: "button" },
-        on: {
-          click: () => connectSession(item)
-        }
-      }, [
-        h("div", { className: "row" }, [
-          h("div", { className: "session-name grow", text: item.title || item.id }),
-          isLinked ? h("span", { className: "linked-chip", text: "Linked" }) : null
+      const isConfirming = state.confirmCloseId === item.id;
+      listContainer.appendChild(h("div", { className: "session-row" }, [
+        h("button", {
+          className: "session-item",
+          attrs: { type: "button" },
+          on: {
+            click: () => connectSession(item)
+          }
+        }, [
+          h("div", { className: "row" }, [
+            h("div", { className: "session-name grow", text: item.title || item.id }),
+            isLinked ? h("span", { className: "linked-chip", text: "Linked" }) : null
+          ]),
+          h("div", { className: "session-meta", text: item.directory || item.id })
         ]),
-        h("div", { className: "session-meta", text: item.directory || item.id })
+        h("button", {
+          className: `session-close${isConfirming ? " confirm" : ""}`,
+          text: isConfirming ? "Sure?" : "×",
+          attrs: { type: "button", "aria-label": `Close session ${item.title || item.id}`, title: "Close session" },
+          on: {
+            click: () => {
+              if (isConfirming) {
+                closeSession(item);
+                return;
+              }
+              armConfirmClose(item.id);
+            }
+          }
+        })
       ]));
     }
   }
