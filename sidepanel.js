@@ -136,7 +136,7 @@ async function fetchSessions() {
   state.fetchingSessionsStarted = true;
   render();
   try {
-    const response = await sendPanelMessage({ type: "panel_refresh_sessions" });
+    const response = await sendPanelMessage({ type: "refresh_sessions" });
     if (response?.ok) {
       state.sessions = Array.isArray(response.sessions) ? response.sessions : [];
       state.sessionsContext = response.context || null;
