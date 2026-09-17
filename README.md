@@ -13,7 +13,7 @@ Add the plugin to your OpenCode config:
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-chrome-annotation@latest"]
+  "plugin": ["opencode-annotate@latest"]
 }
 ```
 
