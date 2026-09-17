@@ -2,15 +2,20 @@
   "manifest_version": 3,
   "name": "OpenCode Chrome Annotation",
   "short_name": "OpenCode Annotation",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Annotate pages and send context into your local OpenCode setup",
-  "homepage_url": "https://github.com/jodusnodus/opencode-chrome-annotation",
+  "homepage_url": "https://github.com/eagleeyejack/opencode-chrome-annotation-extension",
+  "minimum_chrome_version": "114",
   "permissions": [
     "tabs",
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "sidePanel"
   ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
   "host_permissions": [
     "http://127.0.0.1/*",
     "http://localhost/*"
