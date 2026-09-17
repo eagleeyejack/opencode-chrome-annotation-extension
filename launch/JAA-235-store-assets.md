@@ -56,22 +56,22 @@ Order matters: the first three are what reviewers and users actually look at.
 
 **About section blurb:** A side panel that connects Chrome tabs to your local OpenCode agent. Annotate the live page; the agent gets the screenshot and selector.
 
+## Composed promo images (deterministic, per product-promo-gallery skill)
 
-## AI image prompts (promo tiles + heroes only - the 5 listing screenshots must be real UI)
+No AI-generated mockups. All five are HTML/CSS artboards rendered in a browser at exact pixels, built from real assets only. Working dir (outside the repo): `/tmp/opencode/promo/`. Brand rule: the OpenCode **wordmark never appears** on our tiles (endorsement risk) - only the word "OpenCode" in copy. Our logo is always `icon.svg` from this repo (dark tile + indigo #818CF8 bubble-crosshair). Type: system mono stack (ui-monospace, SFMono-Regular, Menlo) to echo OpenCode's terminal aesthetic. Real captures required before composing: the user's 5 real-UI screenshots (shot list above) - tiles 1 and 2 can compose immediately (logo + copy only), tiles 3-5 need the real captures.
 
-All prompts share: flat vector style, dark background #0f1115, indigo accents #818cf8, white bold geometric sans (Inter-like), render exactly the quoted text and nothing else, no gibberish text, no photographic elements.
+**1. Small promo tile - 440x280**
+Artboard: dark #111111 full-bleed. Center: `icon.svg` mark at 96px. Below: white bold 22px "Point. Annotate. Ship." Grey 13px subline "Send what's broken to your AI agent". QA: mark centered, text exactly as quoted, PNG 24-bit no alpha.
 
-**1. Small promo tile (440x280)**
-Flat vector-style promotional tile, 440x280, dark background #0f1115. Centered: minimal line-art logo of a speech bubble containing a crosshair cursor, drawn in indigo #818cf8 with subtle glow. Below it, bold white sans-serif headline "Point. Annotate. Ship." and small grey subline "Send what's broken to your AI agent". Generous negative space, subtle indigo glow only, no mockups, no gibberish text.
+**2. Marquee promo tile - 1400x560**
+Artboard: dark #111111. Left third (padding 64px): white bold 54px headline "Show your agent what's broken", grey 20px subline "Click an element. The agent gets the screenshot and the selector." Right two-thirds: three real `icons/icon48.png`-style chips replaced by three real mini-captures of the selection highlight box (indigo outline) cropped from the user's screenshot #2, joined by thin #818CF8 rules. Hierarchy: one headline, one subline, real evidence. QA: headline never wraps past two lines, captures sharp at 2x source downscale.
 
-**2. Marquee (1400x560)**
-Wide horizontal banner, 1400x560, dark #0f1115. Left third: large white bold sans-serif headline "Show your agent what's broken", smaller grey subline "Click an element. The agent gets the screenshot and the selector." Right two-thirds: abstract three-step flow connected by thin indigo arrows - icon 1: crosshair cursor over a small UI button outline, icon 2: pencil annotating the button, icon 3: paper plane - each icon inside a rounded dark card with indigo accents. Flat vector, minimal text exactly as quoted, no gibberish.
+**3. Store hero - 1280x720**
+Artboard: dark #111111. Left half: real screenshot #3 (queue with 2-3 items) in a dark browser frame with traffic-light dots, scaled to 560px wide, allowed to bleed below the artboard (editorial crop). Right half: `icon.svg` at 64px, white bold 40px "OpenCode Annotate", grey 18px "Point at what's broken. Your agent fixes it." Install line in mono 14px: `{ "plugin": ["opencode-annotate@latest"] }` (verified against package.json - do not invent). QA: install line character-exact, browser frame intentional, no dev chrome visible in the capture.
 
-**3. Store hero (1280x720)**
-Clean product hero, 1280x720, dark #0f1115. A stylized dark browser window mockup with one UI button highlighted by an indigo #818cf8 glowing selection box. Overlapping the browser's right edge, a small floating white panel card titled "Queued annotations" with two simple list rows. Top-left: line-art speech-bubble-with-crosshair logo + white text "opencode-annotate". Bottom caption in grey: "Point at what's broken. Your agent fixes it." Flat, modern, high contrast, quoted text only.
+**4. Social / OG card - 1200x630**
+Artboard: dark #111111. Top safe padding 80px. White bold 56px two-line headline "Point at what's broken. / Your agent fixes it." Grey 20px line: "OpenCode Annotate - open source, GPL-3.0". Bottom-right: `icon.svg` at 120px. Keep all text inside 80px margins (platform cropping). QA: legible at 300px-wide preview.
 
-**4. Social / OG share card (1200x630)**
-Social share card, 1200x630, dark #0f1115. Left: bold white two-line headline "Point at what's broken.\nYour agent fixes it." Small grey line beneath: "opencode-annotate - open source, GPL-3.0". Right: the line-art speech-bubble-with-crosshair logo, large, indigo #818cf8 with soft glow. Flat vector, generous margins, quoted text only, no gibberish.
+**5. Trust tile - 440x280**
+Artboard: dark #111111. Centered: shield outline in #818CF8 (stroke only) containing white mono "127.0.0.1". Below: white bold 18px "100% local. Nothing leaves your machine." Grey 12px "open source - GPL-3.0". QA: the localhost claim matches the privacy policy (`docs/privacy.html`) and the real architecture - no invented claims.
 
-**5. Trust tile (440x280)**
-Small flat tile, 440x280, dark #0f1115. Centered: minimal shield outline in indigo #818cf8 containing the text "127.0.0.1" in white monospace. Below, small white bold text "100% local. Nothing leaves your machine." and a tiny grey line "open source - GPL-3.0". Flat vector, quoted text only, no gibberish.
