@@ -46,7 +46,7 @@ Order matters: the first three are what reviewers and users actually look at.
 >
 > How it works:
 >
-> 1. Run OpenCode with the opencode-chrome-annotation plugin
+> 1. Run OpenCode with the opencode-annotate plugin
 > 2. Click the extension icon and pick your session from the panel
 > 3. Click elements on the page, write instructions, send to the agent
 >

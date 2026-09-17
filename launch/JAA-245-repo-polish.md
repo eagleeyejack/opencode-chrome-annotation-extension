@@ -23,7 +23,7 @@
 **Point at what's broken. Your agent fixes it.**
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
-[![npm](https://img.shields.io/npm/v/@eagleeyejack/opencode-chrome-annotation)](https://www.npmjs.com/package/@eagleeyejack/opencode-chrome-annotation)
+[![npm](https://img.shields.io/npm/v/opencode-annotate)](https://www.npmjs.com/package/opencode-annotate)
 ```
 
 (After the demo GIF lands in the repo root, and after npm publish for the badge.)
@@ -35,7 +35,7 @@
 
 **Agent side:** add the plugin to your OpenCode config:
 
-    { "plugin": ["@eagleeyejack/opencode-chrome-annotation@latest"] }
+    { "plugin": ["opencode-annotate@latest"] }
 
 **Browser side:** load this repo unpacked (chrome://extensions > Developer mode), or grab it from the Chrome Web Store: <link when live>
 ```

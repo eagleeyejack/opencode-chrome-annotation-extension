@@ -15,7 +15,7 @@ Where: the showcase / plugins / community-projects channel in discord.gg/opencod
 >
 > Honest lineage: it started as a fork of JodusNodus's opencode-chrome-annotation (GPL), which I rebuilt around the side panel - session management, close/delete sessions, dates, queue flow.
 >
-> Demo GIF attached. Repo: <link>. Plugin: `@eagleeyejack/opencode-chrome-annotation` (one config line). Extension: load unpacked, store listing in review.
+> Demo GIF attached. Repo: <link>. Plugin: `opencode-annotate` (one config line). Extension: load unpacked, store listing in review.
 
 ## After posting
 
