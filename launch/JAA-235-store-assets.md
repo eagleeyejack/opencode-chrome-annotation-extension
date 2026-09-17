@@ -55,3 +55,23 @@ Order matters: the first three are what reviewers and users actually look at.
 > Open source under GPL-3.0: https://github.com/eagleeyejack/opencode-chrome-annotation-extension
 
 **About section blurb:** A side panel that connects Chrome tabs to your local OpenCode agent. Annotate the live page; the agent gets the screenshot and selector.
+
+
+## AI image prompts (promo tiles + heroes only - the 5 listing screenshots must be real UI)
+
+All prompts share: flat vector style, dark background #0f1115, indigo accents #818cf8, white bold geometric sans (Inter-like), render exactly the quoted text and nothing else, no gibberish text, no photographic elements.
+
+**1. Small promo tile (440x280)**
+Flat vector-style promotional tile, 440x280, dark background #0f1115. Centered: minimal line-art logo of a speech bubble containing a crosshair cursor, drawn in indigo #818cf8 with subtle glow. Below it, bold white sans-serif headline "Point. Annotate. Ship." and small grey subline "Send what's broken to your AI agent". Generous negative space, subtle indigo glow only, no mockups, no gibberish text.
+
+**2. Marquee (1400x560)**
+Wide horizontal banner, 1400x560, dark #0f1115. Left third: large white bold sans-serif headline "Show your agent what's broken", smaller grey subline "Click an element. The agent gets the screenshot and the selector." Right two-thirds: abstract three-step flow connected by thin indigo arrows - icon 1: crosshair cursor over a small UI button outline, icon 2: pencil annotating the button, icon 3: paper plane - each icon inside a rounded dark card with indigo accents. Flat vector, minimal text exactly as quoted, no gibberish.
+
+**3. Store hero (1280x720)**
+Clean product hero, 1280x720, dark #0f1115. A stylized dark browser window mockup with one UI button highlighted by an indigo #818cf8 glowing selection box. Overlapping the browser's right edge, a small floating white panel card titled "Queued annotations" with two simple list rows. Top-left: line-art speech-bubble-with-crosshair logo + white text "opencode-annotate". Bottom caption in grey: "Point at what's broken. Your agent fixes it." Flat, modern, high contrast, quoted text only.
+
+**4. Social / OG share card (1200x630)**
+Social share card, 1200x630, dark #0f1115. Left: bold white two-line headline "Point at what's broken.\nYour agent fixes it." Small grey line beneath: "opencode-annotate - open source, GPL-3.0". Right: the line-art speech-bubble-with-crosshair logo, large, indigo #818cf8 with soft glow. Flat vector, generous margins, quoted text only, no gibberish.
+
+**5. Trust tile (440x280)**
+Small flat tile, 440x280, dark #0f1115. Centered: minimal shield outline in indigo #818cf8 containing the text "127.0.0.1" in white monospace. Below, small white bold text "100% local. Nothing leaves your machine." and a tiny grey line "open source - GPL-3.0". Flat vector, quoted text only, no gibberish.

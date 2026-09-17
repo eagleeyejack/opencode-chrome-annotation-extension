@@ -10,7 +10,7 @@ Zip exactly: `manifest.json`, `background.js`, `sidepanel.html`, `sidepanel.js`,
 zip -r opc-chrome-annotation-1.3.0.zip manifest.json background.js sidepanel.html sidepanel.js injected icons LICENSE -x '.*'
 ```
 
-Version in manifest: 1.3.0 (matches the PR).
+Version in manifest: 1.3.0 (matches the PR). A ready-to-upload zip built from main is at `~/Downloads/opencode-chrome-annotation-1.3.0.zip` - rebuild it after any code change with the zip command below.
 
 ## Listing fields
 
