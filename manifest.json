@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "OpenCode Chrome Annotation",
-  "short_name": "OpenCode Annotation",
+  "name": "OpenCode Annotate",
+  "short_name": "OpenCode Annotate",
   "version": "1.3.0",
-  "description": "Annotate pages and send context into your local OpenCode setup",
+  "description": "Annotate any webpage and send screenshots, element selectors, and instructions to your OpenCode agent.",
   "homepage_url": "https://github.com/eagleeyejack/opencode-chrome-annotation-extension",
   "minimum_chrome_version": "114",
   "permissions": [
@@ -38,7 +38,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "OpenCode Chrome Annotation",
+    "default_title": "OpenCode Annotate",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
