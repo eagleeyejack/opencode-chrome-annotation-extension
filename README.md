@@ -1,10 +1,10 @@
 # OpenCode Chrome Annotation
 
-Companion Chrome extension for the [`opencode-chrome-annotation`](https://www.npmjs.com/package/opencode-chrome-annotation) OpenCode plugin. Annotate any page in Chrome and send the screenshot, selected element metadata, and your instruction straight into your local [OpenCode](https://opencode.ai) session.
+Companion Chrome extension for the [`opencode-annotate`](https://www.npmjs.com/package/opencode-annotate) OpenCode plugin. Annotate any page in Chrome and send the screenshot, selected element metadata, and your instruction straight into your local [OpenCode](https://opencode.ai) session.
 
 > Note: this project is not built by the OpenCode team and is not affiliated with them in any way. It is a GPL-3.0 fork of [JodusNodus/opencode-chrome-annotation](https://github.com/JodusNodus/opencode-chrome-annotation) with the extension UI rebuilt as a Chrome side panel.
 
-The plugin side (the OpenCode plugin, local HTTP server, and screenshot handling) lives in the main repo: https://github.com/JodusNodus/opencode-chrome-annotation
+The plugin side (the OpenCode plugin, local HTTP server, and screenshot handling) lives in the main repo: https://github.com/eagleeyejack/opencode-chrome-annotation
 
 ## Install
 
