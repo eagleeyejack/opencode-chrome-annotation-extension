@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy - OpenCode Chrome Annotation</title>
+<style>
+  body { font: 15px/1.6 -apple-system, system-ui, sans-serif; color: #1f2937; max-width: 720px; margin: 40px auto; padding: 0 20px; }
+  h1 { font-size: 24px; } h2 { font-size: 18px; margin-top: 28px; }
+  code { background: #f3f4f6; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  td, th { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; font-size: 14px; }
+</style>
+</head>
+<body>
+<h1>Privacy Policy</h1>
+<p><strong>OpenCode Chrome Annotation</strong> - Chrome extension<br>
+Last updated: September 2026</p>
+
+<h2>What this extension does</h2>
+<p>The extension connects a browser tab to your own local <a href="https://opencode.ai">OpenCode</a> session so you can select an element on a page, write an instruction, and send the selected element's screenshot and metadata to that session.</p>
+
+<h2>What data is handled</h2>
+<ul>
+  <li>The current page URL and title.</li>
+  <li>Metadata of the element you select: tag, CSS selector, role, ARIA label, visible text, and its position and size on the page.</li>
+  <li>A cropped screenshot of the element you selected.</li>
+  <li>The instruction text you write.</li>
+  <li>Identifiers for the OpenCode session the tab is connected to, and the extension version.</li>
+</ul>
+
+<h2>Where the data goes</h2>
+<p>Nowhere but your own machine. The extension communicates exclusively with a local server that the OpenCode plugin runs on your computer, bound to <code>127.0.0.1</code> on ports <code>39240-39260</code>. Your annotations are delivered to your own OpenCode instance over localhost.</p>
+<p>The extension does not send any data to the developer, to any third-party service, or to any remote server. There is no analytics, no telemetry, no crash reporting, and no account system.</p>
+
+<h2>How data is stored</h2>
+<p>Tab claims and queued annotations are stored in <code>chrome.storage.session</code>, which lives only in your browser's memory for the current browsing session and is cleared when the browser closes. Queued annotations are also deleted when you disconnect a tab, clear the queue, or send the queue.</p>
+
+<h2>Permissions and why they are needed</h2>
+<table>
+  <tr><th>Permission</th><th>Why</th></tr>
+  <tr><td><code>activeTab</code> / optional <code>&lt;all_urls&gt;</code></td><td>Granted only when you start annotating, so the extension can run the element-selection script on the page and capture the cropped screenshot.</td></tr>
+  <tr><td><code>sidePanel</code></td><td>Hosts the extension's user interface in Chrome's side panel.</td></tr>
+  <tr><td><code>tabs</code></td><td>Identifies the active tab so annotations are attached to the correct OpenCode session.</td></tr>
+  <tr><td><code>scripting</code></td><td>Injects the element-selection and screenshot-cropping code into the page being annotated.</td></tr>
+  <tr><td><code>storage</code></td><td>Remembers tab claims and annotation queues during your browser session.</td></tr>
+</table>
+
+<h2>Your control</h2>
+<p>You can disconnect a tab at any time from the side panel, which removes the session claim and queued annotations. Removing the extension removes all stored data.</p>
+
+<h2>Source code</h2>
+<p>The extension is open source under GPL-3.0: <a href="https://github.com/eagleeyejack/opencode-chrome-annotation-extension">github.com/eagleeyejack/opencode-chrome-annotation-extension</a>. It is a fork of <a href="https://github.com/JodusNodus/opencode-chrome-annotation">JodusNodus/opencode-chrome-annotation</a>. This project is not built by the OpenCode team and is not affiliated with them.</p>
+
+<h2>Contact</h2>
+<p>Open a GitHub issue at the repository above if you have questions about this policy.</p>
+</body>
+</html>
