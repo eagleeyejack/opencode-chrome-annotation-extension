@@ -17,11 +17,16 @@ Add the plugin to your OpenCode config:
 }
 ```
 
-Install the extension from this repo (your own Chrome Web Store listing can be added later):
+Install the extension from the [Chrome Web Store](https://chromewebstore.google.com/detail/opencode-annotate/opcdjaoejpnkalealbpjabflbejpcmjh?hl=en).
+
+<details>
+<summary>Or load unpacked from source</summary>
 
 1. Open `chrome://extensions`.
 2. Enable Developer mode.
 3. Click **Load unpacked** and select this directory.
+
+</details>
 
 ## How It Works
 
