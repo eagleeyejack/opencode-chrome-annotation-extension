@@ -15,6 +15,8 @@ const state = {
   settingsOpen: false,
   draft: "",
   pending: false,
+  sendFailed: null,
+  copying: false,
   toast: null,
   toastTimer: null,
   addedTick: false,
@@ -55,7 +57,8 @@ const ICON_PATHS = {
   check: '<path d="M2 6.4l2.6 2.6L10 3.4"/>',
   trash: '<path d="M1.8 3.2h8.4M4.4 3.2V2.2h3.2v1M2.8 3.2l.5 6.8h5.4l.5-6.8M4.9 5.4v2.8M7.1 5.4v2.8"/>',
   link: '<path d="M5 3.2l1-1a2.4 2.4 0 0 1 3.4 3.4l-1 1M7 8.8l-1 1A2.4 2.4 0 0 1 2.6 6.4l1-1"/><path d="M4.4 7.6l3.2-3.2"/>',
-  plug: '<path d="M4.2 1.2v2.6M7.8 1.2v2.6M2.6 3.8h6.8v1.8a3.4 3.4 0 0 1-6.8 0V3.8zM6 9v1.8"/>'
+  plug: '<path d="M4.2 1.2v2.6M7.8 1.2v2.6M2.6 3.8h6.8v1.8a3.4 3.4 0 0 1-6.8 0V3.8zM6 9v1.8"/>',
+  copy: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><path d="M8.5 3.5v-1a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1"/>'
 };
 
 function icon(name, size = 12) {
@@ -117,6 +120,8 @@ async function refreshState() {
         state.tab = response.tab;
         state.claim = response.claim;
         state.queue = Array.isArray(response.queue) ? response.queue : [];
+        if (!state.queue.length)
+          state.sendFailed = null;
         state.selection = response.selection;
         if (!response.claim)
           state.settingsOpen = false;
@@ -300,22 +305,34 @@ async function sendQueue() {
     const response = await sendPanelMessage({ type: "send_queued_annotations" });
     if (response?.ok) {
       const sent = response.sent || 0;
+      state.sendFailed = null;
       toast("success", sent === 1 ? "Sent 1 annotation to OpenCode" : `Sent ${sent} annotations to OpenCode`);
     } else {
-      toast("error", response?.error || "Failed to send annotations");
+      state.sendFailed = {
+        sent: response?.sent || 0,
+        failed: response?.failed || state.queue.length,
+        error: response?.error || "Failed to send annotations"
+      };
+      toast("error", response?.error || "Failed to send annotations — copy unsent to paste manually");
     }
   } catch (error) {
+    state.sendFailed = { sent: 0, failed: state.queue.length, error: error?.message || String(error) };
     toast("error", error?.message || String(error));
   }
   state.pending = false;
   render();
+  refreshState();
 }
 
 async function clearQueue() {
   try {
     const response = await sendPanelMessage({ type: "clear_queue" });
-    if (!response?.ok)
+    if (!response?.ok) {
       toast("error", response?.error || "Failed to clear queue");
+      return;
+    }
+    state.sendFailed = null;
+    render();
   } catch (error) {
     toast("error", error?.message || String(error));
   }
@@ -329,6 +346,139 @@ async function removeQueued(id) {
   } catch (error) {
     toast("error", error?.message || String(error));
   }
+}
+
+function asText(value, fallback = "") {
+  if (typeof value === "string")
+    return value;
+  if (value === null || value === undefined)
+    return fallback;
+  return String(value);
+}
+
+function formatRect(rect) {
+  if (!rect || typeof rect !== "object")
+    return "";
+  const x = rect.x ?? rect.left ?? "";
+  const y = rect.y ?? rect.top ?? "";
+  const width = rect.width ?? "";
+  const height = rect.height ?? "";
+  if (x === "" && y === "" && width === "" && height === "")
+    return "";
+  return `x=${x}, y=${y}, width=${width}, height=${height}`;
+}
+
+function formatAnnotationBlock(entry, index, total) {
+  const element = entry?.element || {};
+  const page = entry?.page || {};
+  const comment = asText(entry?.comment, "");
+  const lines = [];
+  lines.push(`## Annotation ${index + 1}/${total}`);
+  lines.push("");
+  lines.push(`Comment: ${comment || "(no comment)"}`);
+  lines.push(`Page: ${asText(page.title, "(untitled)")}`);
+  lines.push(`URL: ${asText(page.url, "")}`);
+  lines.push(`Selector: ${asText(element.selector, "")}`);
+  lines.push(`Tag: ${asText(element.tag, "")}`);
+  lines.push(`Role: ${asText(element.role, "")}`);
+  lines.push(`Text: ${asText(element.text, "")}`);
+  lines.push(`Aria-label: ${element.ariaLabel ?? ""}`);
+  lines.push(`Id: ${element.id ?? ""}`);
+  const rect = formatRect(element.rect);
+  if (rect)
+    lines.push(`Rect: ${rect}`);
+  lines.push(`Class: ${asText(element.className, "")}`);
+  lines.push(`Screenshot: ${entry?.hasScreenshot ? "retained in queue for retry (not embedded in clipboard)" : "none"}`);
+  return lines.join("\n");
+}
+
+function formatUnsentMarkdown(entries) {
+  const list = Array.isArray(entries) ? entries : [];
+  const screenshotsRetained = list.filter((entry) => entry?.hasScreenshot).length;
+  const header = [
+    `# Unsent annotations (${list.length}) — paste into OpenCode chat`,
+    screenshotsRetained
+      ? `${screenshotsRetained} screenshot(s) retained in queue for retry (screenshots are not embedded in clipboard).`
+      : "No screenshots retained for these annotations.",
+    ""
+  ].join("\n");
+  const blocks = list.map((entry, index) => formatAnnotationBlock(entry, index, list.length));
+  return `${header}\n${blocks.join("\n\n---\n\n")}\n`;
+}
+
+async function copyTextToClipboard(text) {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {}
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    const ok = document.execCommand("copy");
+    if (!ok)
+      throw new Error("Copy command failed");
+  } finally {
+    textarea.remove();
+  }
+}
+
+async function getCopyEntries() {
+  try {
+    const response = await sendPanelMessage({ type: "get_queue_for_copy" });
+    if (response?.ok && Array.isArray(response.annotations) && response.annotations.length)
+      return response.annotations;
+  } catch {}
+  return Array.isArray(state.queue) ? state.queue : [];
+}
+
+async function copyUnsent() {
+  if (state.copying)
+    return;
+  const entries = await getCopyEntries();
+  if (!entries.length) {
+    toast("error", "No queued annotations to copy");
+    return;
+  }
+  state.copying = true;
+  render();
+  try {
+    await copyTextToClipboard(formatUnsentMarkdown(entries));
+    toast("success", entries.length === 1 ? "Copied 1 annotation" : `Copied ${entries.length} annotations`);
+  } catch (error) {
+    toast("error", error?.message ? `Copy failed: ${error.message}` : "Copy failed — select and copy manually");
+  }
+  state.copying = false;
+  render();
+}
+
+async function copySingle(id) {
+  if (state.copying)
+    return;
+  const entries = await getCopyEntries();
+  const entry = entries.find((item) => item?.id === id) || entries[0];
+  if (!entry) {
+    toast("error", "No queued annotations to copy");
+    return;
+  }
+  state.copying = true;
+  render();
+  try {
+    await copyTextToClipboard(formatUnsentMarkdown([entry]));
+    toast("success", "Copied 1 annotation");
+  } catch (error) {
+    toast("error", error?.message ? `Copy failed: ${error.message}` : "Copy failed — select and copy manually");
+  }
+  state.copying = false;
+  render();
 }
 
 function projectNameFor(directory) {
@@ -615,12 +765,39 @@ function queueNode() {
   const root = h("div", { className: "section" });
   root.appendChild(h("div", { className: "row between" }, [
     h("div", { className: "title", text: "Queued" }),
-    h("button", {
-      className: "btn small",
-      attrs: { type: "button" },
-      on: { click: clearQueue }
-    }, [icon("trash"), h("span", { text: "Clear" })])
+    h("div", { className: "queue-actions" }, [
+      h("button", {
+        className: "btn small",
+        attrs: { type: "button", "aria-label": `Copy ${state.queue.length} unsent annotations to clipboard`, title: "Copy unsent annotations to clipboard" },
+        disabled: state.copying || state.pending,
+        on: { click: copyUnsent }
+      }, [icon("copy"), h("span", { text: "Copy unsent" })]),
+      h("button", {
+        className: "btn small",
+        attrs: { type: "button" },
+        on: { click: clearQueue }
+      }, [icon("trash"), h("span", { text: "Clear" })])
+    ])
   ]));
+  if (state.sendFailed) {
+    const delivered = state.sendFailed.sent || 0;
+    const failed = state.sendFailed.failed || state.queue.length;
+    const total = delivered + failed;
+    root.appendChild(h("div", { className: "send-failure", attrs: { role: "alert" } }, [
+      h("div", {
+        className: "send-failure-text",
+        text: total > 0
+          ? `Send failed (${delivered} of ${total} delivered): ${state.sendFailed.error} — copy unsent to paste manually.`
+          : `Send failed: ${state.sendFailed.error} — copy unsent to paste manually.`
+      }),
+      h("button", {
+        className: "btn small primary",
+        attrs: { type: "button" },
+        disabled: state.copying || state.pending,
+        on: { click: copyUnsent }
+      }, [icon("copy"), h("span", { text: state.queue.length === 1 ? "Copy unsent annotation" : `Copy ${state.queue.length} unsent` })])
+    ]));
+  }
   const listContainer = h("div", { className: "list" });
   state.queue.forEach((entry, index) => {
     const rawComment = typeof entry.comment === "string" ? entry.comment : "";
@@ -629,17 +806,33 @@ function queueNode() {
     listContainer.appendChild(h("div", { className: "queue-item" }, [
       h("div", { className: "row between" }, [
         h("div", { className: "queue-meta", text: `${index + 1}. ${label}` }),
-        h("button", {
-          className: "icon-btn",
-          text: "×",
-          attrs: { type: "button", "aria-label": `Remove queued annotation ${index + 1}` },
-          on: { click: () => removeQueued(entry.id) }
-        })
+        h("div", { className: "queue-item-actions" }, [
+          h("button", {
+            className: "icon-btn",
+            attrs: { type: "button", "aria-label": `Copy queued annotation ${index + 1} to clipboard`, title: "Copy this annotation" },
+            disabled: state.copying,
+            on: { click: () => copySingle(entry.id) }
+          }, [icon("copy")]),
+          h("button", {
+            className: "icon-btn",
+            text: "×",
+            attrs: { type: "button", "aria-label": `Remove queued annotation ${index + 1}` },
+            on: { click: () => removeQueued(entry.id) }
+          })
+        ])
       ]),
       excerpt ? h("div", { className: "queue-comment", text: excerpt }) : null
     ]));
   });
   root.appendChild(listContainer);
+  root.appendChild(h("div", { className: "queue-footer" }, [
+    h("button", {
+      className: "btn small full",
+      attrs: { type: "button", "aria-label": `Copy ${state.queue.length} unsent annotations to clipboard` },
+      disabled: state.copying || state.pending,
+      on: { click: copyUnsent }
+    }, [icon("copy"), h("span", { text: state.copying ? "Copying…" : `Copy unsent (${state.queue.length})` })])
+  ]));
   return root;
 }
 

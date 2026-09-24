@@ -57,11 +57,31 @@ function broadcastPanelChanged() {
   } catch {}
 }
 function toQueueSummary(entry) {
+  const element = entry?.element || null;
   return {
     id: entry?.id,
     comment: entry?.comment,
-    tag: entry?.element?.tag,
-    selector: entry?.element?.selector
+    tag: element?.tag,
+    selector: element?.selector,
+    page: entry?.page ? { url: entry.page.url || "", title: entry.page.title || "" } : null,
+    element: element ? {
+      selector: element.selector || "",
+      tag: element.tag || "",
+      role: element.role || "",
+      text: typeof element.text === "string" ? element.text : "",
+      ariaLabel: element.ariaLabel ?? null,
+      id: element.id ?? null,
+      className: typeof element.className === "string" ? element.className : "",
+      rect: element.rect ? {
+        x: element.rect.x ?? element.rect.left ?? 0,
+        y: element.rect.y ?? element.rect.top ?? 0,
+        width: element.rect.width ?? 0,
+        height: element.rect.height ?? 0
+      } : null
+    } : null,
+    viewport: entry?.viewport || null,
+    hasScreenshot: !!(entry?.screenshot && typeof entry.screenshot.dataUrl === "string"),
+    createdAt: entry?.createdAt ?? null
   };
 }
 
@@ -1616,7 +1636,8 @@ var MESSAGE_TYPE = {
   PANEL_RESELECT: "panel_reselect_element",
   SELECTION_PICK: "selection_pick",
   SELECTION_CANCEL: "selection_cancel",
-  SELECTION_EXITED: "selection_exited"
+  SELECTION_EXITED: "selection_exited",
+  GET_QUEUE_COPY: "get_queue_for_copy"
 };
 function isSupportedMessage(message) {
   const type = typeof message === "object" && message !== null ? message.type : undefined;
@@ -1695,7 +1716,7 @@ async function sendQueuedAnnotations(tab) {
     });
     await showAnnotationError(tab.id, `Failed to send queued annotations (${sent} of ${entries.length} delivered): ${failure.message}`);
     await injectConnectionOverlay(tab.id, true);
-    return { ok: false, sent, failed: entries.length - sent, error: failure.message };
+    return { ok: false, sent, failed: entries.length - sent, error: failure.message, unsent: remaining.map(toQueueSummary) };
   }
   logExtension("Queued annotations delivered to OpenCode instance", {
     tabId: tab.id,
@@ -1836,6 +1857,13 @@ async function runMessageAction(message, tab, sender) {
     if (!tab.id)
       throw new Error("No active tab found");
     return await sendQueuedAnnotations(tab);
+  }
+  if (message.type === "get_queue_for_copy") {
+    if (!tab.id)
+      throw new Error("No active tab found");
+    const annotations = annotationQueues.list(tab.id).map(toQueueSummary);
+    const screenshotsRetained = annotations.filter((entry) => entry.hasScreenshot).length;
+    return { ok: true, annotations, screenshotsRetained };
   }
   const result = await startAnnotationMode(tab);
   if (tab.id && result?.queued > 0)
