@@ -4,6 +4,7 @@ const state = {
   tab: null,
   claim: null,
   queue: [],
+  history: [],
   selection: null,
   sessions: null,
   sessionsContext: null,
@@ -120,6 +121,7 @@ async function refreshState() {
         state.tab = response.tab;
         state.claim = response.claim;
         state.queue = Array.isArray(response.queue) ? response.queue : [];
+        state.history = Array.isArray(response.history) ? response.history : [];
         if (!state.queue.length)
           state.sendFailed = null;
         state.selection = response.selection;
@@ -836,6 +838,65 @@ function queueNode() {
   return root;
 }
 
+function historyStatusLabel(status) {
+  if (status === "sent")
+    return "Sent";
+  if (status === "partial")
+    return "Partial";
+  return "Failed";
+}
+
+function historyNode() {
+  if (!Array.isArray(state.history) || !state.history.length)
+    return null;
+  const root = h("div", { className: "section" });
+  root.appendChild(h("div", { className: "row between" }, [
+    h("div", { className: "title", text: "Send history" }),
+    h("div", { className: "hint", text: "latest first" })
+  ]));
+  const listContainer = h("div", { className: "list" });
+  for (const attempt of state.history) {
+    const status = attempt?.status === "sent" ? "sent" : attempt?.status === "partial" ? "partial" : "failed";
+    const sentCount = Number(attempt?.sentCount) || 0;
+    const totalCount = Number(attempt?.totalCount) || 0;
+    const when = formatRelative(attempt?.timestamp);
+    const stamp = Number(attempt?.timestamp) ? new Date(attempt.timestamp).toLocaleString() : "";
+    const canRetry = status !== "sent" && state.queue.length > 0;
+    const row = h("div", { className: "history-item" });
+    row.appendChild(h("div", { className: "row between" }, [
+      h("div", { className: "row" }, [
+        h("span", { className: `status-chip ${status}`, text: historyStatusLabel(status) }),
+        h("span", { className: "queue-meta", text: `${sentCount} of ${totalCount} sent${when ? ` · ${when}` : ""}`, attrs: stamp ? { title: stamp } : {} })
+      ]),
+      status === "sent" ? null : h("div", { className: "history-actions" }, [
+        h("button", {
+          className: "btn small",
+          attrs: { type: "button", title: "Re-send the still-queued entries" },
+          disabled: state.pending || state.copying || !canRetry,
+          on: { click: sendQueue }
+        }, [icon("send"), h("span", { text: "Retry" })]),
+        h("button", {
+          className: "icon-btn",
+          attrs: { type: "button", "aria-label": "Copy unsent annotations to clipboard", title: "Copy unsent annotations to clipboard" },
+          disabled: state.copying || state.pending || !state.queue.length,
+          on: { click: copyUnsent }
+        }, [icon("copy")])
+      ])
+    ]));
+    if (status !== "sent" && attempt?.error) {
+      const message = String(attempt.error);
+      row.appendChild(h("div", {
+        className: "history-error",
+        text: message.length > 160 ? `${message.slice(0, 160)}…` : message,
+        attrs: { title: message }
+      }));
+    }
+    listContainer.appendChild(row);
+  }
+  root.appendChild(listContainer);
+  return root;
+}
+
 function connectedNode() {
   const root = h("div", { className: "contents" });
   root.appendChild(toolbarNode());
@@ -847,6 +908,9 @@ function connectedNode() {
   const queue = queueNode();
   if (queue)
     root.appendChild(queue);
+  const history = historyNode();
+  if (history)
+    root.appendChild(history);
   return root;
 }
 

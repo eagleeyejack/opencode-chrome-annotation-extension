@@ -171,6 +171,20 @@
         gap: 8px;
       }
       .send-failure-text { line-height: 1.45; word-break: break-word; }
+      .history-item { border-top: 1px solid rgba(0,0,0,0.08); padding: 6px 2px; }
+      .history-actions { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+      .history-error { margin-top: 3px; color: #991b1b; font-size: 11px; word-break: break-word; line-height: 1.45; }
+      .status-chip {
+        display: inline-block;
+        padding: 1px 7px;
+        border-radius: 999px;
+        font: 700 10px/1.5 ui-sans-serif, system-ui, sans-serif;
+        white-space: nowrap;
+        flex: none;
+      }
+      .status-chip.sent { background: #d1fae5; color: #065f46; }
+      .status-chip.failed { background: #ffe4e6; color: #7f1d1d; }
+      .status-chip.partial { background: #fef3c7; color: #92400e; }
       .linked-label {
         font-weight: 700;
         max-width: 190px;
