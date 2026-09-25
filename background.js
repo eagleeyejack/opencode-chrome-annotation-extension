@@ -57,11 +57,31 @@ function broadcastPanelChanged() {
   } catch {}
 }
 function toQueueSummary(entry) {
+  const element = entry?.element || null;
   return {
     id: entry?.id,
     comment: entry?.comment,
-    tag: entry?.element?.tag,
-    selector: entry?.element?.selector
+    tag: element?.tag,
+    selector: element?.selector,
+    page: entry?.page ? { url: entry.page.url || "", title: entry.page.title || "" } : null,
+    element: element ? {
+      selector: element.selector || "",
+      tag: element.tag || "",
+      role: element.role || "",
+      text: typeof element.text === "string" ? element.text : "",
+      ariaLabel: element.ariaLabel ?? null,
+      id: element.id ?? null,
+      className: typeof element.className === "string" ? element.className : "",
+      rect: element.rect ? {
+        x: element.rect.x ?? element.rect.left ?? 0,
+        y: element.rect.y ?? element.rect.top ?? 0,
+        width: element.rect.width ?? 0,
+        height: element.rect.height ?? 0
+      } : null
+    } : null,
+    viewport: entry?.viewport || null,
+    hasScreenshot: !!(entry?.screenshot && typeof entry.screenshot.dataUrl === "string"),
+    createdAt: entry?.createdAt ?? null
   };
 }
 
@@ -1492,9 +1512,21 @@ function createClaimsStore() {
 }
 
 // extension-src/annotation-queue-store.ts
+var MAX_SEND_HISTORY_PER_TAB = 20;
+function nextSendAttemptId() {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `attempt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  }
+}
 function createAnnotationQueueStore() {
   const queues = new Map;
+  const sendHistory = new Map;
+  const inFlightSends = new Map;
   const storageKey = "opencodeChromeAnnotationQueues";
+  const historyStorageKey = "opencodeChromeAnnotationSendHistory";
+  const inFlightStorageKey = "opencodeChromeAnnotationInFlightSends";
   function storage() {
     return chrome.storage?.session || chrome.storage?.local;
   }
@@ -1503,7 +1535,9 @@ function createAnnotationQueueStore() {
     if (!area)
       return;
     await area.set({
-      [storageKey]: Array.from(queues.entries())
+      [storageKey]: Array.from(queues.entries()),
+      [historyStorageKey]: Array.from(sendHistory.entries()),
+      [inFlightStorageKey]: Array.from(inFlightSends.entries())
     });
   }
   function normalizeEntry(entry) {
@@ -1525,12 +1559,49 @@ function createAnnotationQueueStore() {
       createdAt: Number.isFinite(entry.createdAt) ? entry.createdAt : Date.now()
     };
   }
+  function normalizeHistoryRecord(record) {
+    if (!record || typeof record !== "object")
+      return null;
+    const status = record.status === "sent" || record.status === "partial" || record.status === "failed" ? record.status : "failed";
+    const entryIds = Array.isArray(record.entryIds) ? record.entryIds.filter((id) => typeof id === "string" && id) : [];
+    return {
+      attemptId: typeof record.attemptId === "string" && record.attemptId ? record.attemptId : nextSendAttemptId(),
+      timestamp: Number.isFinite(record.timestamp) ? record.timestamp : Date.now(),
+      status,
+      sentCount: Number.isFinite(record.sentCount) && record.sentCount >= 0 ? Math.floor(record.sentCount) : 0,
+      totalCount: Number.isFinite(record.totalCount) && record.totalCount >= 0 ? Math.floor(record.totalCount) : entryIds.length,
+      error: typeof record.error === "string" ? record.error : "",
+      entryIds
+    };
+  }
+  function normalizeInFlight(snapshot) {
+    if (!snapshot || typeof snapshot !== "object")
+      return null;
+    const entryIds = Array.isArray(snapshot.entryIds) ? snapshot.entryIds.filter((id) => typeof id === "string" && id) : [];
+    if (!entryIds.length)
+      return null;
+    return {
+      attemptId: typeof snapshot.attemptId === "string" && snapshot.attemptId ? snapshot.attemptId : nextSendAttemptId(),
+      timestamp: Number.isFinite(snapshot.timestamp) ? snapshot.timestamp : Date.now(),
+      entryIds,
+      totalCount: Number.isFinite(snapshot.totalCount) && snapshot.totalCount >= 0 ? Math.floor(snapshot.totalCount) : entryIds.length
+    };
+  }
+  function pushHistoryRecord(tabId, record) {
+    const normalized = normalizeHistoryRecord(record);
+    if (!normalized)
+      return null;
+    const list = sendHistory.get(tabId) || [];
+    list.unshift(normalized);
+    sendHistory.set(tabId, list.slice(0, MAX_SEND_HISTORY_PER_TAB));
+    return normalized;
+  }
   return {
     async restore() {
       const area = storage();
       if (!area)
         return;
-      const result = await area.get(storageKey);
+      const result = await area.get([storageKey, historyStorageKey, inFlightStorageKey]);
       const entries = Array.isArray(result?.[storageKey]) ? result[storageKey] : [];
       queues.clear();
       for (const [tabId, list] of entries) {
@@ -1540,6 +1611,46 @@ function createAnnotationQueueStore() {
         if (normalized.length)
           queues.set(Number(tabId), normalized);
       }
+      const historyEntries = Array.isArray(result?.[historyStorageKey]) ? result[historyStorageKey] : [];
+      sendHistory.clear();
+      for (const [tabId, list] of historyEntries) {
+        if (!Number.isFinite(Number(tabId)) || !Array.isArray(list))
+          continue;
+        const normalized = list.map(normalizeHistoryRecord).filter(Boolean).slice(0, MAX_SEND_HISTORY_PER_TAB);
+        if (normalized.length)
+          sendHistory.set(Number(tabId), normalized);
+      }
+      const inFlightEntries = Array.isArray(result?.[inFlightStorageKey]) ? result[inFlightStorageKey] : [];
+      inFlightSends.clear();
+      let recovered = false;
+      for (const [tabId, snapshot] of inFlightEntries) {
+        if (!Number.isFinite(Number(tabId)))
+          continue;
+        const normalized = normalizeInFlight(snapshot);
+        if (!normalized)
+          continue;
+        // A persisted in-flight snapshot with no matching completion means the
+        // worker restarted (or crashed) mid-send. The queue itself was never
+        // destructively cleared, so whatever is still queued is intact: recover
+        // by recording the interruption as a failed/partial attempt instead of
+        // silently losing the batch.
+        const numericTabId = Number(tabId);
+        const queuedIds = new Set((queues.get(numericTabId) || []).map((entry) => entry.id));
+        const stillQueued = normalized.entryIds.filter((id) => queuedIds.has(id)).length;
+        const delivered = Math.max(0, normalized.totalCount - stillQueued);
+        pushHistoryRecord(numericTabId, {
+          attemptId: normalized.attemptId,
+          timestamp: normalized.timestamp,
+          status: stillQueued === 0 ? "sent" : delivered > 0 ? "partial" : "failed",
+          sentCount: stillQueued === 0 ? normalized.totalCount : delivered,
+          totalCount: normalized.totalCount,
+          error: stillQueued === 0 ? "" : `Send interrupted (worker restarted mid-send) — ${stillQueued} of ${normalized.totalCount} preserved in queue for retry`,
+          entryIds: normalized.entryIds
+        });
+        recovered = true;
+      }
+      if (recovered)
+        await save();
     },
     list(tabId) {
       if (tabId === undefined)
@@ -1583,6 +1694,41 @@ function createAnnotationQueueStore() {
       await save();
       return list;
     },
+    listHistory(tabId) {
+      if (tabId === undefined)
+        return [];
+      const list = sendHistory.get(tabId);
+      return list ? list.slice() : [];
+    },
+    async recordAttempt(tabId, record) {
+      if (tabId === undefined)
+        return null;
+      const stored = pushHistoryRecord(tabId, record);
+      await save();
+      return stored;
+    },
+    getInFlight(tabId) {
+      if (tabId === undefined)
+        return null;
+      return inFlightSends.get(tabId) || null;
+    },
+    async setInFlight(tabId, snapshot) {
+      if (tabId === undefined)
+        return null;
+      const normalized = normalizeInFlight(snapshot);
+      if (!normalized)
+        return null;
+      inFlightSends.set(tabId, normalized);
+      await save();
+      return normalized;
+    },
+    async clearInFlight(tabId) {
+      if (tabId === undefined || !inFlightSends.has(tabId))
+        return false;
+      inFlightSends.delete(tabId);
+      await save();
+      return true;
+    },
     delete(tabId) {
       queues.delete(tabId);
       save().catch(() => {});
@@ -1616,7 +1762,8 @@ var MESSAGE_TYPE = {
   PANEL_RESELECT: "panel_reselect_element",
   SELECTION_PICK: "selection_pick",
   SELECTION_CANCEL: "selection_cancel",
-  SELECTION_EXITED: "selection_exited"
+  SELECTION_EXITED: "selection_exited",
+  GET_QUEUE_COPY: "get_queue_for_copy"
 };
 function isSupportedMessage(message) {
   const type = typeof message === "object" && message !== null ? message.type : undefined;
@@ -1653,58 +1800,121 @@ async function ensureSiteAccess(tab) {
   }
 }
 async function sendQueuedAnnotations(tab) {
-  const entries = await annotationQueues.take(tab.id);
+  // Loss-proof send: work from a non-destructive snapshot and remove entries
+  // one-by-one only after each POST succeeds. Any throw — or a worker restart
+  // between snapshot and completion — leaves unsent entries in the store, and
+  // the persisted in-flight snapshot lets restore() recover the attempt.
+  const entries = annotationQueues.list(tab.id);
   if (!entries.length)
     return { ok: true, sent: 0 };
   const claim = claimedTabs.get(tab.id);
   if (!claim?.baseUrl || !claim?.sessionId) {
+    await annotationQueues.recordAttempt(tab.id, {
+      attemptId: nextSendAttemptId(),
+      timestamp: Date.now(),
+      status: "failed",
+      sentCount: 0,
+      totalCount: entries.length,
+      error: "Tab is not connected to an OpenCode instance",
+      entryIds: entries.map((entry) => entry.id)
+    });
     throw new Error("Tab is not connected to an OpenCode instance");
   }
-  try {
-    await postJson(claim.baseUrl, "/claim", claimRequestBody(tab.id, claim.sessionId));
-  } catch {}
-  let sent = 0;
-  let failure = null;
-  for (const entry of entries) {
-    try {
-      await postJson(claim.baseUrl, "/annotation", {
-        ...claimRequestBody(tab.id, claim.sessionId),
-        annotation: {
-          comment: entry.comment,
-          page: entry.page,
-          element: entry.element,
-          viewport: entry.viewport,
-          screenshot: entry.screenshot
-        }
-      });
-      sent += 1;
-    } catch (error) {
-      failure = error instanceof Error ? error : new Error(String(error));
-      break;
-    }
-  }
-  if (failure) {
-    const remaining = entries.slice(sent);
-    for (const entry of remaining)
-      await annotationQueues.add(tab.id, entry);
-    warnExtension("Failed to send queued annotations", {
-      tabId: tab.id,
-      sent,
-      total: entries.length,
-      error: failure.message
-    });
-    await showAnnotationError(tab.id, `Failed to send queued annotations (${sent} of ${entries.length} delivered): ${failure.message}`);
-    await injectConnectionOverlay(tab.id, true);
-    return { ok: false, sent, failed: entries.length - sent, error: failure.message };
-  }
-  logExtension("Queued annotations delivered to OpenCode instance", {
-    tabId: tab.id,
-    baseUrl: claim.baseUrl,
-    sent
+  const attemptId = nextSendAttemptId();
+  const timestamp = Date.now();
+  await annotationQueues.setInFlight(tab.id, {
+    attemptId,
+    timestamp,
+    entryIds: entries.map((entry) => entry.id),
+    totalCount: entries.length
   });
-  await showSendToast(tab.id, `Sent ${sent} annotations to OpenCode`).catch(() => {});
-  await injectConnectionOverlay(tab.id);
-  return { ok: true, sent, failed: 0 };
+  let sent = 0;
+  try {
+    try {
+      await postJson(claim.baseUrl, "/claim", claimRequestBody(tab.id, claim.sessionId));
+    } catch {}
+    let failure = null;
+    for (const entry of entries) {
+      try {
+        await postJson(claim.baseUrl, "/annotation", {
+          ...claimRequestBody(tab.id, claim.sessionId),
+          annotation: {
+            comment: entry.comment,
+            page: entry.page,
+            element: entry.element,
+            viewport: entry.viewport,
+            screenshot: entry.screenshot
+          }
+        });
+        await annotationQueues.remove(tab.id, entry.id);
+        sent += 1;
+      } catch (error) {
+        failure = error instanceof Error ? error : new Error(String(error));
+        break;
+      }
+    }
+    await annotationQueues.clearInFlight(tab.id);
+    if (failure) {
+      const record = {
+        attemptId,
+        timestamp,
+        status: sent > 0 ? "partial" : "failed",
+        sentCount: sent,
+        totalCount: entries.length,
+        error: failure.message,
+        entryIds: entries.map((entry) => entry.id)
+      };
+      await annotationQueues.recordAttempt(tab.id, record);
+      warnExtension("Failed to send queued annotations", {
+        tabId: tab.id,
+        sent,
+        total: entries.length,
+        error: failure.message
+      });
+      await showAnnotationError(tab.id, `Failed to send queued annotations (${sent} of ${entries.length} delivered): ${failure.message}`).catch(() => {});
+      await injectConnectionOverlay(tab.id, true).catch(() => {});
+      const unsent = annotationQueues.list(tab.id).map(toQueueSummary);
+      return { ok: false, sent, failed: entries.length - sent, error: failure.message, unsent, history: record };
+    }
+    const record = {
+      attemptId,
+      timestamp,
+      status: "sent",
+      sentCount: sent,
+      totalCount: entries.length,
+      error: "",
+      entryIds: entries.map((entry) => entry.id)
+    };
+    await annotationQueues.recordAttempt(tab.id, record);
+    logExtension("Queued annotations delivered to OpenCode instance", {
+      tabId: tab.id,
+      baseUrl: claim.baseUrl,
+      sent
+    });
+    await showSendToast(tab.id, `Sent ${sent} annotations to OpenCode`).catch(() => {});
+    await injectConnectionOverlay(tab.id).catch(() => {});
+    return { ok: true, sent, failed: 0, history: record };
+  } catch (error) {
+    // Unexpected throw mid-batch: confirmed-sent entries were already removed
+    // one-by-one above, so everything still queued is intact by construction.
+    // Record the attempt so the failure is visible instead of silent.
+    const text = error instanceof Error ? error.message : String(error);
+    try {
+      await annotationQueues.clearInFlight(tab.id);
+    } catch {}
+    try {
+      await annotationQueues.recordAttempt(tab.id, {
+        attemptId,
+        timestamp,
+        status: sent > 0 ? "partial" : "failed",
+        sentCount: sent,
+        totalCount: entries.length,
+        error: text,
+        entryIds: entries.map((entry) => entry.id)
+      });
+    } catch {}
+    throw error;
+  }
 }
 async function runMessageAction(message, tab, sender) {
   if (message.type === "panel_get_state") {
@@ -1714,6 +1924,8 @@ async function runMessageAction(message, tab, sender) {
       tab: tabId !== undefined ? { id: tabId, url: tab.url, title: tab.title } : null,
       claim: tabId !== undefined ? claimedTabs.get(tabId) || null : null,
       queue: tabId !== undefined ? annotationQueues.list(tabId).map(toQueueSummary) : [],
+      history: tabId !== undefined ? annotationQueues.listHistory(tabId) : [],
+      inFlight: tabId !== undefined ? annotationQueues.getInFlight(tabId) : null,
       selection: tabId !== undefined ? selectionSessions.get(tabId) || null : null
     };
   }
@@ -1837,6 +2049,13 @@ async function runMessageAction(message, tab, sender) {
       throw new Error("No active tab found");
     return await sendQueuedAnnotations(tab);
   }
+  if (message.type === "get_queue_for_copy") {
+    if (!tab.id)
+      throw new Error("No active tab found");
+    const annotations = annotationQueues.list(tab.id).map(toQueueSummary);
+    const screenshotsRetained = annotations.filter((entry) => entry.hasScreenshot).length;
+    return { ok: true, annotations, screenshotsRetained };
+  }
   const result = await startAnnotationMode(tab);
   if (tab.id && result?.queued > 0)
     await injectConnectionOverlay(tab.id, true);
@@ -1916,7 +2135,9 @@ async function disconnectTab(tab) {
     }
   }
   claimedTabs.delete(tab.id);
-  annotationQueues.delete(tab.id);
+  // Preserve the annotation queue + send history across disconnects: a
+  // disconnect during a failing period must not discard unsent work. Entries
+  // stay queued (with screenshots) for retry or copy once the tab reconnects.
   await removeConnectionOverlay(tab.id);
   broadcastPanelChanged();
   if (!claimedTabs.size())
@@ -2030,7 +2251,11 @@ async function startAnnotationMode(tabOverride) {
 }
 chrome.tabs.onRemoved.addListener((tabId) => {
   claimedTabs.delete(tabId);
-  annotationQueues.delete(tabId);
+  // Preserve the annotation queue + send history when a tab closes: tab IDs
+  // are never reused within a browser session, so retained entries cannot be
+  // confused with a new tab, and a failing send period must not silently drop
+  // unsent work. Retained data lives in session storage and clears with the
+  // browser session.
   if (!claimedTabs.size())
     monitor.stop();
 });
