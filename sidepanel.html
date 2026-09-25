@@ -200,7 +200,21 @@
         padding: 0 4px 0 0;
       }
       .session-row:hover { background: #f3f4f6; }
+      .session-row.selected { background: #eef2ff; }
+      .session-row.selected:hover { background: #e0e7ff; }
       .session-row .session-item { flex: 1 1 auto; min-width: 0; }
+      .session-select { flex: none; width: 14px; height: 14px; margin: 0 2px 0 0; accent-color: #111111; cursor: pointer; }
+      .bulk-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border: 1px solid rgba(0,0,0,0.12);
+        border-radius: 8px;
+        background: #f9fafb;
+      }
+      .bulk-count { font-weight: 700; flex: 1 1 auto; min-width: 0; }
+      .btn.confirm { color: #dc2626; border-color: rgba(220,38,38,0.4); }
       .session-name { font-weight: 600; overflow-wrap: anywhere; }
       .session-meta { margin-top: 2px; color: #6b7280; font-size: 11px; overflow-wrap: anywhere; }
       .session-date { flex: none; color: #9ca3af; font-size: 10px; }
