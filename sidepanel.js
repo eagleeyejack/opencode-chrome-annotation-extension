@@ -54,7 +54,7 @@ const ICON_PATHS = {
   refresh: '<path d="M10 6a4 4 0 1 1-1.17-2.83M10 1.5V3.5H8"/>',
   crosshair: '<circle cx="6" cy="6" r="3.2"/><path d="M6 .8v2.4M6 8.8v2.4M.8 6h2.4M8.8 6h2.4"/>',
   send: '<path d="M11 1L1 5.5l3.5 2L6 11l5-10z"/><path d="M4.5 7.5L11 1"/>',
-  gear: '<circle cx="6" cy="6" r="2.1"/><path d="M6 .9v1.7M6 9.4v1.7M.9 6h1.7M9.4 6h1.7M2.4 2.4l1.2 1.2M8.4 8.4l1.2 1.2M9.6 2.4L8.4 3.6M3.6 8.4L2.4 9.6"/>',
+  gear: '<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="6" r="0.9"/><path d="M6 1.9v1.7M6 8.4v1.7M1.9 6h1.7M8.4 6h1.7M2.9 2.9l1.2 1.2M7.9 7.9l1.2 1.2M9.1 2.9L7.9 4.1M4.1 7.9l-1.2 1.2"/>',
   check: '<path d="M2 6.4l2.6 2.6L10 3.4"/>',
   trash: '<path d="M1.8 3.2h8.4M4.4 3.2V2.2h3.2v1M2.8 3.2l.5 6.8h5.4l.5-6.8M4.9 5.4v2.8M7.1 5.4v2.8"/>',
   link: '<path d="M5 3.2l1-1a2.4 2.4 0 0 1 3.4 3.4l-1 1M7 8.8l-1 1A2.4 2.4 0 0 1 2.6 6.4l1-1"/><path d="M4.4 7.6l3.2-3.2"/>',
@@ -897,9 +897,19 @@ function historyNode() {
   return root;
 }
 
+function linkedChatNode() {
+  const claim = state.claim;
+  const label = claim?.sessionLabel || claim?.sessionId || "Connected";
+  return h("div", { className: "row" }, [
+    icon("link"),
+    h("div", { className: "linked-label grow", text: label, attrs: { title: label } })
+  ]);
+}
+
 function connectedNode() {
   const root = h("div", { className: "contents" });
   root.appendChild(toolbarNode());
+  root.appendChild(linkedChatNode());
   if (state.settingsOpen)
     root.appendChild(settingsNode());
   const selection = selectionNode();
