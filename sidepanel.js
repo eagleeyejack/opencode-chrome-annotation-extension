@@ -13,6 +13,10 @@ const state = {
   activeProject: "",
   confirmCloseId: null,
   confirmCloseTimer: null,
+  selectedSessionIds: new Set(),
+  selectionAnchorId: null,
+  confirmBulkClose: false,
+  confirmBulkTimer: null,
   settingsOpen: false,
   draft: "",
   pending: false,
@@ -35,6 +39,8 @@ function h(tag, props = {}, children = []) {
     node.className = props.className;
   if (props.disabled)
     node.disabled = true;
+  if (props.checked !== undefined)
+    node.checked = Boolean(props.checked);
   if (props.attrs) {
     for (const [key, value] of Object.entries(props.attrs))
       node.setAttribute(key, String(value));
@@ -142,6 +148,7 @@ async function fetchSessions() {
   state.fetchingSessions = true;
   state.fetchingSessionsStarted = true;
   state.confirmCloseId = null;
+  disarmBulkConfirm();
   render();
   try {
     const response = await sendPanelMessage({ type: "refresh_sessions" });
@@ -149,6 +156,7 @@ async function fetchSessions() {
       state.sessions = Array.isArray(response.sessions) ? response.sessions : [];
       state.sessionsContext = response.context || null;
       state.activeProject = "";
+      pruneSessionSelection();
     } else {
       toast("error", response?.error || "Failed to fetch sessions");
     }
@@ -180,6 +188,14 @@ function armConfirmClose(id) {
   render();
 }
 
+async function postCloseSession(session) {
+  return sendPanelMessage({
+    type: "close_session",
+    sessionId: session.id,
+    baseUrl: session.baseUrl
+  });
+}
+
 async function closeSession(session) {
   state.confirmCloseId = null;
   if (state.confirmCloseTimer) {
@@ -187,11 +203,7 @@ async function closeSession(session) {
     state.confirmCloseTimer = null;
   }
   try {
-    const response = await sendPanelMessage({
-      type: "close_session",
-      sessionId: session.id,
-      baseUrl: session.baseUrl
-    });
+    const response = await postCloseSession(session);
     if (response?.ok) {
       toast("success", "Session closed", 2500);
       fetchSessions();
@@ -201,6 +213,96 @@ async function closeSession(session) {
   } catch (error) {
     toast("error", error?.message || String(error));
   }
+}
+
+// Order of session ids as currently visible in the list (grouped/filtered order).
+// Rebuilt on every sessionsNode render; used for shift-click range selection.
+let lastVisibleSessionIds = [];
+
+function pruneSessionSelection() {
+  const liveIds = new Set((state.sessions || []).map((item) => item.id));
+  state.selectedSessionIds = new Set(
+    [...state.selectedSessionIds].filter((id) => liveIds.has(id))
+  );
+  if (state.selectionAnchorId && !liveIds.has(state.selectionAnchorId))
+    state.selectionAnchorId = null;
+}
+
+function disarmBulkConfirm() {
+  state.confirmBulkClose = false;
+  if (state.confirmBulkTimer) {
+    clearTimeout(state.confirmBulkTimer);
+    state.confirmBulkTimer = null;
+  }
+}
+
+function armBulkConfirm() {
+  state.confirmBulkClose = true;
+  if (state.confirmBulkTimer)
+    clearTimeout(state.confirmBulkTimer);
+  state.confirmBulkTimer = setTimeout(() => {
+    state.confirmBulkClose = false;
+    state.confirmBulkTimer = null;
+    render();
+  }, 4000);
+  render();
+}
+
+function toggleSessionSelected(session, event) {
+  const clickedId = session.id;
+  const order = lastVisibleSessionIds;
+  if (event?.shiftKey && state.selectionAnchorId && order.includes(state.selectionAnchorId) && order.includes(clickedId)) {
+    const [from, to] = [order.indexOf(state.selectionAnchorId), order.indexOf(clickedId)].sort((a, b) => a - b);
+    for (let i = from; i <= to; i++)
+      state.selectedSessionIds.add(order[i]);
+  } else {
+    if (state.selectedSessionIds.has(clickedId))
+      state.selectedSessionIds.delete(clickedId);
+    else
+      state.selectedSessionIds.add(clickedId);
+    state.selectionAnchorId = clickedId;
+  }
+  disarmBulkConfirm();
+  render();
+}
+
+function clearSessionSelection() {
+  state.selectedSessionIds = new Set();
+  state.selectionAnchorId = null;
+  disarmBulkConfirm();
+  render();
+}
+
+async function closeSelectedSessions() {
+  const ids = [...state.selectedSessionIds];
+  disarmBulkConfirm();
+  state.confirmCloseId = null;
+  const byId = new Map((state.sessions || []).map((item) => [item.id, item]));
+  let closed = 0;
+  let failed = 0;
+  for (const id of ids) {
+    const session = byId.get(id);
+    if (!session)
+      continue;
+    try {
+      const response = await postCloseSession(session);
+      if (response?.ok) {
+        closed++;
+        state.selectedSessionIds.delete(id);
+      } else {
+        failed++;
+      }
+    } catch {
+      failed++;
+    }
+  }
+  if (closed && !failed)
+    toast("success", closed === 1 ? "Closed 1 session" : `Closed ${closed} sessions`, 2500);
+  else if (closed && failed)
+    toast("error", `Closed ${closed} session${closed === 1 ? "" : "s"}, ${failed} failed`);
+  else if (failed)
+    toast("error", failed === 1 ? "Failed to close 1 session" : `Failed to close ${failed} sessions`);
+  fetchSessions();
 }
 
 async function disconnectTab() {
@@ -571,11 +673,48 @@ function sessionsNode() {
   const listContainer = h("div", { className: "list" });
   const visibleGroups = state.activeProject ? groups.filter((group) => group.directory === state.activeProject) : groups;
   const linkedId = state.claim?.sessionId || null;
+  lastVisibleSessionIds = visibleGroups.flatMap((group) => group.items.map((item) => item.id));
+  if (state.selectedSessionIds.size) {
+    const count = state.selectedSessionIds.size;
+    const isBulkConfirming = state.confirmBulkClose;
+    root.appendChild(h("div", { className: "bulk-bar" }, [
+      h("span", { className: "bulk-count", text: `${count} selected` }),
+      h("button", {
+        className: `btn small${isBulkConfirming ? " confirm" : ""}`,
+        text: isBulkConfirming ? "Sure?" : `Close ${count} session${count === 1 ? "" : "s"}`,
+        attrs: { type: "button", "aria-label": `Close ${count} selected session${count === 1 ? "" : "s"}`, title: "Close selected sessions" },
+        on: {
+          click: () => {
+            if (isBulkConfirming) {
+              closeSelectedSessions();
+              return;
+            }
+            armBulkConfirm();
+          }
+        }
+      }),
+      h("button", {
+        className: "btn small",
+        text: "Clear",
+        attrs: { type: "button", "aria-label": "Clear session selection", title: "Clear selection" },
+        on: { click: clearSessionSelection }
+      })
+    ]));
+  }
   for (const group of visibleGroups) {
     for (const item of group.items) {
       const isLinked = Boolean(linkedId) && item.id === linkedId;
       const isConfirming = state.confirmCloseId === item.id;
-      listContainer.appendChild(h("div", { className: "session-row" }, [
+      const isSelected = state.selectedSessionIds.has(item.id);
+      listContainer.appendChild(h("div", { className: `session-row${isSelected ? " selected" : ""}` }, [
+        h("input", {
+          className: "session-select",
+          checked: isSelected,
+          attrs: { type: "checkbox", "aria-label": `Select session ${item.title || item.id}` },
+          on: {
+            click: (event) => toggleSessionSelected(item, event)
+          }
+        }),
         h("button", {
           className: "session-item",
           attrs: { type: "button" },
