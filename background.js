@@ -1518,6 +1518,9 @@ function createClaimsStore() {
 }
 
 // extension-src/annotation-queue-store.ts
+// Size note: 20 records x 3 snapshots (long comments/classNames) ~= 123KB
+// JSON — well under 500KB, so the 20/tab cap stands. Snapshots never carry
+// screenshot dataUrl bytes (flag only), which is what keeps this bounded.
 var MAX_SEND_HISTORY_PER_TAB = 20;
 function nextSendAttemptId() {
   try {
@@ -1565,11 +1568,49 @@ function createAnnotationQueueStore() {
       createdAt: Number.isFinite(entry.createdAt) ? entry.createdAt : Date.now()
     };
   }
+  function normalizeHistorySnapshot(raw) {
+    // History snapshot shape mirrors toQueueSummary (comment, page, FULL
+    // element incl. full className, viewport, hasScreenshot flag) but is
+    // rebuilt defensively: any screenshot/dataUrl bytes are dropped, never stored.
+    if (!raw || typeof raw !== "object")
+      return null;
+    const rawElement = raw.element && typeof raw.element === "object" ? raw.element : null;
+    const rawPage = raw.page && typeof raw.page === "object" ? raw.page : null;
+    const rawRect = rawElement?.rect && typeof rawElement.rect === "object" ? rawElement.rect : null;
+    return {
+      id: typeof raw.id === "string" && raw.id ? raw.id : undefined,
+      comment: typeof raw.comment === "string" ? raw.comment : "",
+      tag: typeof raw.tag === "string" ? raw.tag : rawElement && typeof rawElement.tag === "string" ? rawElement.tag : undefined,
+      selector: typeof raw.selector === "string" ? raw.selector : rawElement && typeof rawElement.selector === "string" ? rawElement.selector : undefined,
+      page: rawPage ? { url: typeof rawPage.url === "string" ? rawPage.url : "", title: typeof rawPage.title === "string" ? rawPage.title : "" } : null,
+      element: rawElement ? {
+        selector: typeof rawElement.selector === "string" ? rawElement.selector : "",
+        tag: typeof rawElement.tag === "string" ? rawElement.tag : "",
+        role: typeof rawElement.role === "string" ? rawElement.role : "",
+        text: typeof rawElement.text === "string" ? rawElement.text : "",
+        ariaLabel: rawElement.ariaLabel ?? null,
+        id: rawElement.id ?? null,
+        className: typeof rawElement.className === "string" ? rawElement.className : "",
+        rect: rawRect ? {
+          x: rawRect.x ?? rawRect.left ?? 0,
+          y: rawRect.y ?? rawRect.top ?? 0,
+          width: rawRect.width ?? 0,
+          height: rawRect.height ?? 0
+        } : null
+      } : null,
+      viewport: raw.viewport && typeof raw.viewport === "object" ? raw.viewport : null,
+      hasScreenshot: raw.hasScreenshot === true,
+      createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : null
+    };
+  }
   function normalizeHistoryRecord(record) {
     if (!record || typeof record !== "object")
       return null;
     const status = record.status === "sent" || record.status === "partial" || record.status === "failed" ? record.status : "failed";
     const entryIds = Array.isArray(record.entryIds) ? record.entryIds.filter((id) => typeof id === "string" && id) : [];
+    // Legacy records (pre-snapshot) have no snapshots array: default to [] so
+    // Copy renders disabled instead of crashing.
+    const snapshots = Array.isArray(record.snapshots) ? record.snapshots.map(normalizeHistorySnapshot).filter(Boolean) : [];
     return {
       attemptId: typeof record.attemptId === "string" && record.attemptId ? record.attemptId : nextSendAttemptId(),
       timestamp: Number.isFinite(record.timestamp) ? record.timestamp : Date.now(),
@@ -1577,7 +1618,8 @@ function createAnnotationQueueStore() {
       sentCount: Number.isFinite(record.sentCount) && record.sentCount >= 0 ? Math.floor(record.sentCount) : 0,
       totalCount: Number.isFinite(record.totalCount) && record.totalCount >= 0 ? Math.floor(record.totalCount) : entryIds.length,
       error: typeof record.error === "string" ? record.error : "",
-      entryIds
+      entryIds,
+      snapshots
     };
   }
   function normalizeInFlight(snapshot) {
@@ -1644,6 +1686,9 @@ function createAnnotationQueueStore() {
         const queuedIds = new Set((queues.get(numericTabId) || []).map((entry) => entry.id));
         const stillQueued = normalized.entryIds.filter((id) => queuedIds.has(id)).length;
         const delivered = Math.max(0, normalized.totalCount - stillQueued);
+        // Recovery snapshots cover only the still-queued entries (delivered
+        // payloads are already gone); Copy on this attempt copies that subset.
+        const recoverySnapshots = (queues.get(numericTabId) || []).filter((entry) => normalized.entryIds.includes(entry.id)).map(toQueueSummary);
         pushHistoryRecord(numericTabId, {
           attemptId: normalized.attemptId,
           timestamp: normalized.timestamp,
@@ -1651,7 +1696,8 @@ function createAnnotationQueueStore() {
           sentCount: stillQueued === 0 ? normalized.totalCount : delivered,
           totalCount: normalized.totalCount,
           error: stillQueued === 0 ? "" : `Send interrupted (worker restarted mid-send) — ${stillQueued} of ${normalized.totalCount} preserved in queue for retry`,
-          entryIds: normalized.entryIds
+          entryIds: normalized.entryIds,
+          snapshots: recoverySnapshots
         });
         recovered = true;
       }
@@ -1822,7 +1868,8 @@ async function sendQueuedAnnotations(tab) {
       sentCount: 0,
       totalCount: entries.length,
       error: "Tab is not connected to an OpenCode instance",
-      entryIds: entries.map((entry) => entry.id)
+      entryIds: entries.map((entry) => entry.id),
+      snapshots: entries.map(toQueueSummary)
     });
     throw new Error("Tab is not connected to an OpenCode instance");
   }
@@ -1868,7 +1915,8 @@ async function sendQueuedAnnotations(tab) {
         sentCount: sent,
         totalCount: entries.length,
         error: failure.message,
-        entryIds: entries.map((entry) => entry.id)
+        entryIds: entries.map((entry) => entry.id),
+        snapshots: entries.map(toQueueSummary)
       };
       await annotationQueues.recordAttempt(tab.id, record);
       warnExtension("Failed to send queued annotations", {
@@ -1889,7 +1937,8 @@ async function sendQueuedAnnotations(tab) {
       sentCount: sent,
       totalCount: entries.length,
       error: "",
-      entryIds: entries.map((entry) => entry.id)
+      entryIds: entries.map((entry) => entry.id),
+      snapshots: entries.map(toQueueSummary)
     };
     await annotationQueues.recordAttempt(tab.id, record);
     logExtension("Queued annotations delivered to OpenCode instance", {
@@ -1916,7 +1965,8 @@ async function sendQueuedAnnotations(tab) {
         sentCount: sent,
         totalCount: entries.length,
         error: text,
-        entryIds: entries.map((entry) => entry.id)
+        entryIds: entries.map((entry) => entry.id),
+        snapshots: entries.map(toQueueSummary)
       });
     } catch {}
     throw error;

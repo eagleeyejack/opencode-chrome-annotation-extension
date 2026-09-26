@@ -9,6 +9,9 @@
 //   5. history cap                -> last 20 attempts/tab, no screenshot dataUrls anywhere
 //   6. disconnectTab              -> queue + history preserved (no wipe)
 //   7. PR #2 surface              -> get_queue_for_copy keeps full fidelity, strips bytes
+//   8. sent history copyable       -> success/failed attempts carry snapshots with full
+//                                    locating fidelity, no bytes; legacy records without
+//                                    snapshots normalize to [] (Copy disabled, no crash)
 // Exit non-zero on the first failure. Run: node scripts/verify-send-loss-proof.mjs
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -280,6 +283,50 @@ function historyJson(tabId) {
   assert.ok(Array.isArray(state.history), "7: panel state carries history");
   assert.ok("inFlight" in state, "7: panel state carries inFlight");
   console.log("PASS 7: PR #2 copy/formatter surface intact; panel state carries history");
+}
+
+// ---- 8. sent history copyable ----------------------------------------------
+{
+  const tab = 108;
+  setClaim(tab);
+  await seedEntry(tab, "sent copy me");
+  setAnnotationBehaviors(["ok"]);
+  const res = await sandbox.sendQueuedAnnotations({ id: tab });
+  assert.equal(res.ok, true, "8: send reports success");
+  assert.equal(res.history?.snapshots?.length, 1, "8: success record carries snapshots");
+  const snap = res.history.snapshots[0];
+  assert.equal(snap.comment, "sent copy me", "8: snapshot comment");
+  assert.equal(snap.page?.url, "https://example.com/", "8: snapshot page url");
+  assert.equal(snap.element?.selector, "#x", "8: snapshot selector");
+  assert.equal(snap.element?.className, "a b", "8: snapshot FULL className");
+  assert.equal(snap.hasScreenshot, true, "8: snapshot screenshot flag, not bytes");
+  assert.ok(!JSON.stringify(res.history).includes("data:image"), "8: no dataUrl bytes in history");
+  // Legacy record without snapshots normalizes safely (Copy disabled, no crash).
+  const legacy = await annotationQueues.recordAttempt(tab, {
+    attemptId: "a-legacy",
+    timestamp: Date.now(),
+    status: "sent",
+    sentCount: 1,
+    totalCount: 1,
+    error: "",
+    entryIds: ["old-id"],
+  });
+  // NOTE: JSON comparison because vm-realm arrays carry a different Array
+  // prototype than this runner, which trips assert.deepStrictEqual.
+  assert.equal(JSON.stringify(legacy.snapshots), "[]", "8: legacy record normalizes to empty snapshots");
+  // Defensive strip: bytes smuggled into a snapshot never survive normalization.
+  const hostile = await annotationQueues.recordAttempt(tab, {
+    attemptId: "a-hostile",
+    timestamp: Date.now(),
+    status: "failed",
+    sentCount: 0,
+    totalCount: 1,
+    error: "boom",
+    entryIds: ["h-1"],
+    snapshots: [{ comment: "x", hasScreenshot: false, screenshot: { dataUrl: "data:image/png;base64,AAA" } }],
+  });
+  assert.ok(!JSON.stringify(hostile).includes("data:image"), "8: hostile dataUrl stripped");
+  console.log("PASS 8: sent/failed attempts carry copyable snapshots; legacy records safe");
 }
 
 console.log("\nAll send-loss proofs passed: failed sends never drop entries.");
