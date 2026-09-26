@@ -585,6 +585,36 @@ async function copySingle(id) {
   render();
 }
 
+function formatHistoryMarkdown(attempt) {
+  const snapshots = Array.isArray(attempt?.snapshots) ? attempt.snapshots : [];
+  const status = attempt?.status === "sent" ? "sent" : attempt?.status === "partial" ? "partial" : "failed";
+  const header = status === "sent"
+    ? [`# Sent annotations (${snapshots.length}) — paste into OpenCode chat`, ""].join("\n")
+    : [`# Annotation attempt ${status} (${snapshots.length}) — paste into OpenCode chat`, ""].join("\n");
+  const blocks = snapshots.map((entry, index) => formatAnnotationBlock(entry, index, snapshots.length));
+  return `${header}\n${blocks.join("\n\n---\n\n")}\n`;
+}
+
+async function copyHistoryAttempt(attempt) {
+  if (state.copying)
+    return;
+  const snapshots = Array.isArray(attempt?.snapshots) ? attempt.snapshots : [];
+  if (!snapshots.length) {
+    toast("error", "No snapshot for this attempt");
+    return;
+  }
+  state.copying = true;
+  render();
+  try {
+    await copyTextToClipboard(formatHistoryMarkdown(attempt));
+    toast("success", snapshots.length === 1 ? "Copied 1 annotation" : `Copied ${snapshots.length} annotations`);
+  } catch (error) {
+    toast("error", error?.message ? `Copy failed: ${error.message}` : "Copy failed — select and copy manually");
+  }
+  state.copying = false;
+  render();
+}
+
 function projectNameFor(directory) {
   const segments = (directory || "").split("/").filter(Boolean);
   return segments.length ? segments[segments.length - 1] : directory || "Unknown project";
@@ -1001,14 +1031,16 @@ function historyNode() {
     const when = formatRelative(attempt?.timestamp);
     const stamp = Number(attempt?.timestamp) ? new Date(attempt.timestamp).toLocaleString() : "";
     const canRetry = status !== "sent" && state.queue.length > 0;
+    const snapshots = Array.isArray(attempt?.snapshots) ? attempt.snapshots : [];
+    const canCopyHistory = snapshots.length > 0;
     const row = h("div", { className: "history-item" });
     row.appendChild(h("div", { className: "row between" }, [
       h("div", { className: "row" }, [
         h("span", { className: `status-chip ${status}`, text: historyStatusLabel(status) }),
         h("span", { className: "queue-meta", text: `${sentCount} of ${totalCount} sent${when ? ` · ${when}` : ""}`, attrs: stamp ? { title: stamp } : {} })
       ]),
-      status === "sent" ? null : h("div", { className: "history-actions" }, [
-        h("button", {
+      h("div", { className: "history-actions" }, [
+        status === "sent" ? null : h("button", {
           className: "btn small",
           attrs: { type: "button", title: "Re-send the still-queued entries" },
           disabled: state.pending || state.copying || !canRetry,
@@ -1016,9 +1048,13 @@ function historyNode() {
         }, [icon("send"), h("span", { text: "Retry" })]),
         h("button", {
           className: "icon-btn",
-          attrs: { type: "button", "aria-label": "Copy unsent annotations to clipboard", title: "Copy unsent annotations to clipboard" },
-          disabled: state.copying || state.pending || !state.queue.length,
-          on: { click: copyUnsent }
+          attrs: {
+            type: "button",
+            "aria-label": "Copy this attempt's annotations to clipboard",
+            title: canCopyHistory ? "Copy this attempt's annotations to clipboard" : "No snapshot for this attempt"
+          },
+          disabled: state.copying || state.pending || !canCopyHistory,
+          on: { click: () => copyHistoryAttempt(attempt) }
         }, [icon("copy")])
       ])
     ]));
