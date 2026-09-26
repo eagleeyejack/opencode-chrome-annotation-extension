@@ -50,6 +50,7 @@ The plugin runs a local HTTP server bound to `127.0.0.1` on ports `39240-39260`.
 ## Files
 
 - `manifest.json` - MV3 manifest, side panel registration, permissions.
+- `icons/` - canonical extension icons (upstream O mark, restored 2026-09-26). Do not regenerate from promo art.
 - `background.js` - service worker: session discovery, tab claims, queue store, selection sessions, messaging to the side panel and content scripts.
 - `sidepanel.html` / `sidepanel.js` - the side panel UI: session picker, annotate form, and annotation queue.
 - `injected/selection.js` - lightweight in-page element highlighting and selection while annotating.

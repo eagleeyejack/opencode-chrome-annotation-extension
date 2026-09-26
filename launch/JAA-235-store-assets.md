@@ -75,3 +75,5 @@ Artboard: warm off-white #F4F3F1. Top safe padding 80px. Near-black #1d1d1f bold
 **5. Trust tile - 440x280**
 Artboard: warm off-white #F4F3F1. Centered: shield outline in #1d1d1f (stroke only) containing near-black mono "127.0.0.1" with a small indigo #818CF8 dot. Below: near-black bold 18px "100% local. Nothing leaves your machine." Grey 12px "open source - GPL-3.0". QA: the localhost claim matches the privacy policy (`docs/privacy.html`) and the real architecture - no invented claims.
 
+> 2026-09-26 note: the extension icon reverted to the upstream O mark (`icons/*.png`) and the indigo `icon.svg` / `icon-small.svg` sources were deleted. The tiles above were already composed with the indigo mark and are left as-shipped; do not rebuild extension PNGs from promo art.
+
