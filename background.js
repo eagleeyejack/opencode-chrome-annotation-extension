@@ -154,7 +154,7 @@ async function requestSessionState() {
       context: { reason: "plugin-not-found", instanceCount: 0 }
     };
   }
-  const sessions = [];
+  const byId = new Map;
   for (const instance of instances) {
     try {
       const result = await fetchJson(`${instance.baseUrl}/sessions`, { throwOnHttp: false });
@@ -163,11 +163,17 @@ async function requestSessionState() {
       const payload = result.payload;
       const list = Array.isArray(payload?.sessions) ? payload.sessions : [];
       for (const item of list) {
-        if (typeof item?.id === "string" && !item.id.startsWith("plugin:"))
-          sessions.push({ ...item, baseUrl: instance.baseUrl });
+        if (typeof item?.id !== "string" || item.id.startsWith("plugin:"))
+          continue;
+        const prev = byId.get(item.id);
+        const prevUpdated = Number(prev?.updatedAt) || 0;
+        const nextUpdated = Number(item?.updatedAt) || 0;
+        if (!prev || nextUpdated >= prevUpdated)
+          byId.set(item.id, { ...item, baseUrl: instance.baseUrl });
       }
     } catch {}
   }
+  const sessions = Array.from(byId.values());
   return {
     sessions,
     context: {
