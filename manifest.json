@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "OpenCode Annotate",
   "short_name": "OpenCode Annotate",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Annotate any webpage and send screenshots, element selectors, and instructions to your OpenCode agent.",
   "homepage_url": "https://github.com/eagleeyejack/opencode-chrome-annotation-extension",
   "minimum_chrome_version": "114",
