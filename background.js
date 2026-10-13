@@ -1851,7 +1851,7 @@ async function ensureSiteAccess(tab) {
     throw new Error("Site access was denied for this page.");
   }
 }
-async function sendQueuedAnnotations(tab) {
+async function sendQueuedAnnotations(tab, { pageToast = true } = {}) {
   // Loss-proof send: work from a non-destructive snapshot and remove entries
   // one-by-one only after each POST succeeds. Any throw — or a worker restart
   // between snapshot and completion — leaves unsent entries in the store, and
@@ -1946,7 +1946,8 @@ async function sendQueuedAnnotations(tab) {
       baseUrl: claim.baseUrl,
       sent
     });
-    await showSendToast(tab.id, `Sent ${sent} annotations to OpenCode`).catch(() => {});
+    if (pageToast)
+      await showSendToast(tab.id, `Sent ${sent} annotations to OpenCode`).catch(() => {});
     await injectConnectionOverlay(tab.id).catch(() => {});
     return { ok: true, sent, failed: 0, history: record };
   } catch (error) {
@@ -2105,7 +2106,9 @@ async function runMessageAction(message, tab, sender) {
   if (message.type === "send_queued_annotations") {
     if (!tab.id)
       throw new Error("No active tab found");
-    return await sendQueuedAnnotations(tab);
+    // The side panel shows its own toast, so only toast in the page when the
+    // send came from the in-page queue panel.
+    return await sendQueuedAnnotations(tab, { pageToast: Boolean(sender?.tab) });
   }
   if (message.type === "get_queue_for_copy") {
     if (!tab.id)
