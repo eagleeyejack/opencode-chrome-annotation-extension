@@ -812,7 +812,7 @@ function emptyStateNode() {
       title: "OpenCode plugin not found",
       text: "No annotation server is running on ports 39240–39260. OpenCode needs the opencode-annotate plugin to start one.",
       steps: [
-        "Add \"opencode-annotate@latest\" to the plugin list in your OpenCode config",
+        "Add \"opencode-annotate\" to \"plugins\" in your OpenCode config",
         "Restart OpenCode in your project",
         "Come back here and press Try again"
       ]
