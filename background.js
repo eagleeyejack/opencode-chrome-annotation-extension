@@ -2067,9 +2067,9 @@ async function runMessageAction(message, tab, sender) {
       await postJson(baseUrl, "/session/close", { sessionId });
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
-      if (text.includes("501"))
+      if (text.includes("501") || /session deletion/i.test(text))
         throw new Error("This version of OpenCode does not support closing sessions from the extension. Close it in OpenCode instead.");
-      if (text.includes("404"))
+      if (text.includes("404") || text === "Not found")
         throw new Error("This version of the opencode-annotate plugin cannot close sessions. Update it and restart OpenCode.");
       throw error;
     }
