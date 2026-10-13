@@ -13,9 +13,13 @@ Add the plugin to your OpenCode config:
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-annotate@latest"]
+  "plugins": ["opencode-annotate"]
 }
 ```
+
+On OpenCode 1, use `"plugin": ["opencode-annotate@1"]` instead.
+
+On OpenCode 2, sessions are closed in OpenCode itself, not from the extension.
 
 Install the extension from the [Chrome Web Store](https://chromewebstore.google.com/detail/opencode-annotate/opcdjaoejpnkalealbpjabflbejpcmjh?hl=en).
 

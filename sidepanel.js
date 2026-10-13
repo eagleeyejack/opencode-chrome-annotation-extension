@@ -20,6 +20,7 @@ const state = {
   settingsOpen: false,
   draft: "",
   pending: false,
+  connectingId: null,
   sendFailed: null,
   copying: false,
   toast: null,
@@ -168,6 +169,10 @@ async function fetchSessions() {
 }
 
 async function connectSession(session) {
+  if (state.connectingId)
+    return;
+  state.connectingId = session.id;
+  render();
   try {
     const response = await sendPanelMessage({ type: "connect_tab_to_session", session });
     if (!response?.ok)
@@ -175,6 +180,8 @@ async function connectSession(session) {
   } catch (error) {
     toast("error", error?.message || String(error));
   }
+  state.connectingId = null;
+  render();
 }
 
 function armConfirmClose(id) {
@@ -280,6 +287,7 @@ async function closeSelectedSessions() {
   const byId = new Map((state.sessions || []).map((item) => [item.id, item]));
   let closed = 0;
   let failed = 0;
+  let firstError = "";
   for (const id of ids) {
     const session = byId.get(id);
     if (!session)
@@ -291,9 +299,11 @@ async function closeSelectedSessions() {
         state.selectedSessionIds.delete(id);
       } else {
         failed++;
+        firstError = firstError || response?.error || "";
       }
-    } catch {
+    } catch (error) {
       failed++;
+      firstError = firstError || error?.message || "";
     }
   }
   if (closed && !failed)
@@ -301,7 +311,7 @@ async function closeSelectedSessions() {
   else if (closed && failed)
     toast("error", `Closed ${closed} session${closed === 1 ? "" : "s"}, ${failed} failed`);
   else if (failed)
-    toast("error", failed === 1 ? "Failed to close 1 session" : `Failed to close ${failed} sessions`);
+    toast("error", firstError || (failed === 1 ? "Failed to close 1 session" : `Failed to close ${failed} sessions`));
   fetchSessions();
 }
 
@@ -417,7 +427,7 @@ async function sendQueue() {
         failed: response?.failed || state.queue.length,
         error: response?.error || "Failed to send annotations"
       };
-      toast("error", response?.error || "Failed to send annotations — copy unsent to paste manually");
+      toast("error", response?.error || "Failed to send annotations. Copy unsent to paste them manually.");
     }
   } catch (error) {
     state.sendFailed = { sent: 0, failed: state.queue.length, error: error?.message || String(error) };
@@ -500,7 +510,7 @@ function formatUnsentMarkdown(entries) {
   const list = Array.isArray(entries) ? entries : [];
   const screenshotsRetained = list.filter((entry) => entry?.hasScreenshot).length;
   const header = [
-    `# Unsent annotations (${list.length}) — paste into OpenCode chat`,
+    `# Unsent annotations (${list.length}), paste into OpenCode chat`,
     screenshotsRetained
       ? `${screenshotsRetained} screenshot(s) retained in queue for retry (screenshots are not embedded in clipboard).`
       : "No screenshots retained for these annotations.",
@@ -558,7 +568,7 @@ async function copyUnsent() {
     await copyTextToClipboard(formatUnsentMarkdown(entries));
     toast("success", entries.length === 1 ? "Copied 1 annotation" : `Copied ${entries.length} annotations`);
   } catch (error) {
-    toast("error", error?.message ? `Copy failed: ${error.message}` : "Copy failed — select and copy manually");
+    toast("error", error?.message ? `Copy failed: ${error.message}` : "Copy failed. Select and copy manually.");
   }
   state.copying = false;
   render();
@@ -579,7 +589,7 @@ async function copySingle(id) {
     await copyTextToClipboard(formatUnsentMarkdown([entry]));
     toast("success", "Copied 1 annotation");
   } catch (error) {
-    toast("error", error?.message ? `Copy failed: ${error.message}` : "Copy failed — select and copy manually");
+    toast("error", error?.message ? `Copy failed: ${error.message}` : "Copy failed. Select and copy manually.");
   }
   state.copying = false;
   render();
@@ -589,8 +599,8 @@ function formatHistoryMarkdown(attempt) {
   const snapshots = Array.isArray(attempt?.snapshots) ? attempt.snapshots : [];
   const status = attempt?.status === "sent" ? "sent" : attempt?.status === "partial" ? "partial" : "failed";
   const header = status === "sent"
-    ? [`# Sent annotations (${snapshots.length}) — paste into OpenCode chat`, ""].join("\n")
-    : [`# Annotation attempt ${status} (${snapshots.length}) — paste into OpenCode chat`, ""].join("\n");
+    ? [`# Sent annotations (${snapshots.length}), paste into OpenCode chat`, ""].join("\n")
+    : [`# Annotation attempt ${status} (${snapshots.length}), paste into OpenCode chat`, ""].join("\n");
   const blocks = snapshots.map((entry, index) => formatAnnotationBlock(entry, index, snapshots.length));
   return `${header}\n${blocks.join("\n\n---\n\n")}\n`;
 }
@@ -609,7 +619,7 @@ async function copyHistoryAttempt(attempt) {
     await copyTextToClipboard(formatHistoryMarkdown(attempt));
     toast("success", snapshots.length === 1 ? "Copied 1 annotation" : `Copied ${snapshots.length} annotations`);
   } catch (error) {
-    toast("error", error?.message ? `Copy failed: ${error.message}` : "Copy failed — select and copy manually");
+    toast("error", error?.message ? `Copy failed: ${error.message}` : "Copy failed. Select and copy manually.");
   }
   state.copying = false;
   render();
@@ -642,7 +652,11 @@ function formatRelative(ts) {
 }
 
 function toastNode() {
-  return h("div", { className: `toast ${state.toast.kind}`, text: state.toast.text });
+  return h("div", {
+    className: `toast ${state.toast.kind}`,
+    text: state.toast.text,
+    attrs: { role: state.toast.kind === "error" ? "alert" : "status" }
+  });
 }
 
 function sessionsNode() {
@@ -659,7 +673,7 @@ function sessionsNode() {
     }, [icon("refresh")])
   ]));
   if (!state.fetchingSessionsStarted || state.fetchingSessions) {
-    root.appendChild(h("div", { className: "hint", text: "Looking for OpenCode…" }));
+    root.appendChild(h("div", { className: "hint", text: "Looking for OpenCode…", attrs: { role: "status" } }));
     return root;
   }
   if (!Array.isArray(state.sessions) || !state.sessions.length) {
@@ -688,7 +702,7 @@ function sessionsNode() {
       const chip = h("button", {
         className: `chip${state.activeProject === def.value ? " active" : ""}`,
         text: def.label,
-        attrs: { type: "button" },
+        attrs: { type: "button", "aria-pressed": state.activeProject === def.value },
         on: {
           click: () => {
             state.activeProject = def.value;
@@ -747,7 +761,8 @@ function sessionsNode() {
         }),
         h("button", {
           className: "session-item",
-          attrs: { type: "button" },
+          attrs: { type: "button", title: "Connect this tab to this chat" },
+          disabled: Boolean(state.connectingId),
           on: {
             click: () => connectSession(item)
           }
@@ -755,6 +770,7 @@ function sessionsNode() {
           h("div", { className: "row" }, [
             h("div", { className: "session-name grow", text: item.title || item.id }),
             isLinked ? h("span", { className: "linked-chip", text: "Linked" }) : null,
+            state.connectingId === item.id ? h("span", { className: "session-date", text: "Connecting…" }) : null,
             h("span", { className: "session-date", text: formatRelative(item.updatedAt) })
           ]),
           h("div", { className: "session-meta", text: item.directory || item.id })
@@ -785,7 +801,7 @@ function emptyStateNode() {
   const content = reason === "no-sessions"
     ? {
       title: "No OpenCode session available",
-      text: "The local plugin responded, but it did not report an active OpenCode session for this project.",
+      text: "The plugin is running, but OpenCode has no open session to connect to.",
       steps: [
         "Open OpenCode in the project you want to edit",
         "Make sure the annotation plugin is enabled in that OpenCode config",
@@ -794,11 +810,11 @@ function emptyStateNode() {
     }
     : {
       title: "OpenCode plugin not found",
-      text: "The extension could not find a local OpenCode annotation server on ports 39240-39260.",
+      text: "No annotation server is running on ports 39240–39260. OpenCode needs the opencode-annotate plugin to start one.",
       steps: [
-        "Install npm package: opencode-chrome-annotation",
-        "Add it to your OpenCode config",
-        "Restart OpenCode in your project"
+        "Add \"opencode-annotate\" to \"plugins\" in your OpenCode config",
+        "Restart OpenCode in your project",
+        "Come back here and press Try again"
       ]
     };
   return h("div", {}, [
@@ -840,7 +856,9 @@ function toolbarNode() {
     attrs: { type: "button" },
     disabled: state.pending || !state.queue.length,
     on: { click: sendQueue }
-  }, [icon("send"), h("span", { text: "Send all" })]));
+  }, [icon("send"), h("span", {
+    text: state.pending ? "Sending…" : state.queue.length ? `Send all (${state.queue.length})` : "Send all"
+  })]));
   children.push(h("div", { className: "grow" }));
   children.push(h("button", {
     className: "icon-btn",
@@ -891,23 +909,24 @@ function selectionNode() {
   }));
   const textarea = h("textarea", {
     className: "textarea",
-    attrs: { placeholder: "What should OpenCode change here?" }
+    attrs: { placeholder: "What should OpenCode change here?", "aria-label": "Instruction for OpenCode" }
   });
   textarea.value = state.draft;
   textarea.addEventListener("input", () => {
     state.draft = textarea.value;
   });
   textarea.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       submitSelection(false);
     }
   });
   root.appendChild(textarea);
+  root.appendChild(h("div", { className: "hint", text: "Enter adds to the queue. Shift+Enter for a new line. Esc cancels." }));
   root.appendChild(h("div", { className: "row" }, [
     h("button", {
       className: "btn primary grow",
-      text: "Add to queue",
+      text: state.pending ? "Adding…" : "Add to queue",
       attrs: { type: "button" },
       disabled: state.pending,
       on: { click: () => submitSelection(false) }
@@ -946,6 +965,7 @@ function queueNode() {
       h("button", {
         className: "btn small",
         attrs: { type: "button" },
+        disabled: state.pending,
         on: { click: clearQueue }
       }, [icon("trash"), h("span", { text: "Clear" })])
     ])
@@ -958,8 +978,8 @@ function queueNode() {
       h("div", {
         className: "send-failure-text",
         text: total > 0
-          ? `Send failed (${delivered} of ${total} delivered): ${state.sendFailed.error} — copy unsent to paste manually.`
-          : `Send failed: ${state.sendFailed.error} — copy unsent to paste manually.`
+          ? `Send failed (${delivered} of ${total} delivered): ${state.sendFailed.error}. Copy unsent to paste them manually.`
+          : `Send failed: ${state.sendFailed.error}. Copy unsent to paste them manually.`
       }),
       h("button", {
         className: "btn small primary",
@@ -988,6 +1008,7 @@ function queueNode() {
             className: "icon-btn",
             text: "×",
             attrs: { type: "button", "aria-label": `Remove queued annotation ${index + 1}` },
+            disabled: state.pending,
             on: { click: () => removeQueued(entry.id) }
           })
         ])
@@ -1102,7 +1123,7 @@ function connectedNode() {
 function buildUI() {
   const root = h("div", { className: "root" });
   if (state.loading) {
-    root.appendChild(h("div", { className: "hint", text: "Loading…" }));
+    root.appendChild(h("div", { className: "hint", text: "Loading…", attrs: { role: "status" } }));
     return root;
   }
   if (state.claim)
@@ -1114,9 +1135,34 @@ function buildUI() {
   return root;
 }
 
+const FOCUSABLE = "button, input, textarea";
+
 function render() {
+  // The whole UI is rebuilt on every render, so remember which control had
+  // focus (and the caret) and put it back. Otherwise toasts and background
+  // refreshes drop focus, even in the middle of typing a comment.
+  const active = document.activeElement;
+  let focusIndex = -1;
+  let selStart = null;
+  let selEnd = null;
+  if (active && active !== document.body && app.contains(active)) {
+    focusIndex = Array.from(app.querySelectorAll(FOCUSABLE)).indexOf(active);
+    if (active.tagName === "TEXTAREA") {
+      selStart = active.selectionStart;
+      selEnd = active.selectionEnd;
+    }
+  }
+  const activeTag = active?.tagName;
   const ui = buildUI();
   app.replaceChildren(ui);
+  if (focusIndex >= 0 && !state.focusTextarea) {
+    const next = ui.querySelectorAll(FOCUSABLE)[focusIndex];
+    if (next && next.tagName === activeTag && !next.disabled) {
+      next.focus({ preventScroll: true });
+      if (selStart !== null && next.setSelectionRange)
+        next.setSelectionRange(selStart, selEnd);
+    }
+  }
   if (state.focusTextarea) {
     state.focusTextarea = false;
     const textarea = ui.querySelector("textarea");
