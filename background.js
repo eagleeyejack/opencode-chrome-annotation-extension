@@ -1695,7 +1695,7 @@ function createAnnotationQueueStore() {
           status: stillQueued === 0 ? "sent" : delivered > 0 ? "partial" : "failed",
           sentCount: stillQueued === 0 ? normalized.totalCount : delivered,
           totalCount: normalized.totalCount,
-          error: stillQueued === 0 ? "" : `Send interrupted (worker restarted mid-send) — ${stillQueued} of ${normalized.totalCount} preserved in queue for retry`,
+          error: stillQueued === 0 ? "" : `Send interrupted (worker restarted mid-send), ${stillQueued} of ${normalized.totalCount} still queued for retry`,
           entryIds: normalized.entryIds,
           snapshots: recoverySnapshots
         });
@@ -2067,8 +2067,10 @@ async function runMessageAction(message, tab, sender) {
       await postJson(baseUrl, "/session/close", { sessionId });
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
+      if (text.includes("501"))
+        throw new Error("This version of OpenCode does not support closing sessions from the extension. Close it in OpenCode instead.");
       if (text.includes("404"))
-        throw new Error("This OpenCode plugin version cannot close sessions. Update the opencode-chrome-annotation plugin and restart OpenCode.");
+        throw new Error("This version of the opencode-annotate plugin cannot close sessions. Update it and restart OpenCode.");
       throw error;
     }
     logExtension("Closed OpenCode session", { sessionId, baseUrl });
