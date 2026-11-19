@@ -26,7 +26,6 @@ const state = {
   confirmBulkClose: false,
   confirmBulkTimer: null,
   lastView: null,
-  settingsOpen: false,
   draft: "",
   pending: false,
   connectingId: null,
@@ -75,10 +74,8 @@ const ICON_PATHS = {
   refresh: '<path d="M10 6a4 4 0 1 1-1.17-2.83M10 1.5V3.5H8"/>',
   crosshair: '<circle cx="6" cy="6" r="3.2"/><path d="M6 .8v2.4M6 8.8v2.4M.8 6h2.4M8.8 6h2.4"/>',
   send: '<path d="M11 1L1 5.5l3.5 2L6 11l5-10z"/><path d="M4.5 7.5L11 1"/>',
-  gear: '<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="6" r="0.9"/><path d="M6 1.9v1.7M6 8.4v1.7M1.9 6h1.7M8.4 6h1.7M2.9 2.9l1.2 1.2M7.9 7.9l1.2 1.2M9.1 2.9L7.9 4.1M4.1 7.9l-1.2 1.2"/>',
   check: '<path d="M2 6.4l2.6 2.6L10 3.4"/>',
   trash: '<path d="M1.8 3.2h8.4M4.4 3.2V2.2h3.2v1M2.8 3.2l.5 6.8h5.4l.5-6.8M4.9 5.4v2.8M7.1 5.4v2.8"/>',
-  link: '<path d="M5 3.2l1-1a2.4 2.4 0 0 1 3.4 3.4l-1 1M7 8.8l-1 1A2.4 2.4 0 0 1 2.6 6.4l1-1"/><path d="M4.4 7.6l3.2-3.2"/>',
   plug: '<path d="M4.2 1.2v2.6M7.8 1.2v2.6M2.6 3.8h6.8v1.8a3.4 3.4 0 0 1-6.8 0V3.8zM6 9v1.8"/>',
   copy: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><path d="M8.5 3.5v-1a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1"/>'
 };
@@ -108,6 +105,27 @@ function brandIcon(name, size = 13) {
   path.setAttribute("fill", "currentColor");
   svg.appendChild(path);
   return svg;
+}
+
+const AGENTS = {
+  "claude-code": { label: "Claude Code", icon: "claude" },
+  opencode: { label: "OpenCode", icon: "opencode" }
+};
+
+// Sessions without an agent field come from the OpenCode plugin.
+function agentOf(agent) {
+  return AGENTS[agent] || AGENTS.opencode;
+}
+
+function agentLabel(agent) {
+  return agentOf(agent).label;
+}
+
+function agentGlyph(agent, size = 13) {
+  return h("span", {
+    className: `agent-glyph${agent === "claude-code" ? " claude" : ""}`,
+    attrs: { "aria-hidden": "true" }
+  }, [brandIcon(agentOf(agent).icon, size)]);
 }
 
 function addedTickNode() {
@@ -162,8 +180,6 @@ async function refreshState() {
         if (!state.queue.length)
           state.sendFailed = null;
         state.selection = response.selection;
-        if (!response.claim)
-          state.settingsOpen = false;
         if (!response.selection)
           state.draft = "";
         if (previousPhase !== "locked" && response.selection?.phase === "locked")
@@ -175,177 +191,6 @@ async function refreshState() {
   render();
 }
 
-async function fetchSessions() {
-  state.fetchingSessions = true;
-  state.fetchingSessionsStarted = true;
-  state.confirmCloseId = null;
-  disarmBulkConfirm();
-  render();
-  try {
-    const response = await sendPanelMessage({ type: "refresh_sessions" });
-    if (response?.ok) {
-      state.sessions = Array.isArray(response.sessions) ? response.sessions : [];
-      state.sessionsContext = response.context || null;
-      state.activeProject = "";
-      pruneSessionSelection();
-    } else {
-      toast("error", response?.error || "Failed to fetch sessions");
-    }
-  } catch (error) {
-    toast("error", error?.message || String(error));
-  }
-  state.fetchingSessions = false;
-  state.chipFit = null;
-  animateListOnce();
-}
-
-async function connectSession(session) {
-  if (state.connectingId)
-    return;
-  state.connectingId = session.id;
-  render();
-  try {
-    const response = await sendPanelMessage({ type: "connect_tab_to_session", session });
-    if (!response?.ok)
-      toast("error", response?.error || "Failed to connect");
-  } catch (error) {
-    toast("error", error?.message || String(error));
-  }
-  state.connectingId = null;
-  render();
-}
-
-function armConfirmClose(id) {
-  state.confirmCloseId = id;
-  if (state.confirmCloseTimer)
-    clearTimeout(state.confirmCloseTimer);
-  state.confirmCloseTimer = setTimeout(() => {
-    state.confirmCloseId = null;
-    render();
-  }, 4000);
-  render();
-}
-
-async function postCloseSession(session) {
-  return sendPanelMessage({
-    type: "close_session",
-    sessionId: session.id,
-    baseUrl: session.baseUrl
-  });
-}
-
-async function closeSession(session) {
-  state.confirmCloseId = null;
-  if (state.confirmCloseTimer) {
-    clearTimeout(state.confirmCloseTimer);
-    state.confirmCloseTimer = null;
-  }
-  try {
-    const response = await postCloseSession(session);
-    if (response?.ok) {
-      toast("success", "Session closed", 2500);
-      fetchSessions();
-      return;
-    }
-    toast("error", response?.error || "Failed to close session");
-  } catch (error) {
-    toast("error", error?.message || String(error));
-  }
-}
-
-// Order of session ids as currently visible in the list (grouped/filtered order).
-// Rebuilt on every sessionsNode render; used for shift-click range selection.
-let lastVisibleSessionIds = [];
-
-function pruneSessionSelection() {
-  const liveIds = new Set((state.sessions || []).map((item) => item.id));
-  state.selectedSessionIds = new Set(
-    [...state.selectedSessionIds].filter((id) => liveIds.has(id))
-  );
-  if (state.selectionAnchorId && !liveIds.has(state.selectionAnchorId))
-    state.selectionAnchorId = null;
-}
-
-function disarmBulkConfirm() {
-  state.confirmBulkClose = false;
-  if (state.confirmBulkTimer) {
-    clearTimeout(state.confirmBulkTimer);
-    state.confirmBulkTimer = null;
-  }
-}
-
-function armBulkConfirm() {
-  state.confirmBulkClose = true;
-  if (state.confirmBulkTimer)
-    clearTimeout(state.confirmBulkTimer);
-  state.confirmBulkTimer = setTimeout(() => {
-    state.confirmBulkClose = false;
-    state.confirmBulkTimer = null;
-    render();
-  }, 4000);
-  render();
-}
-
-function toggleSessionSelected(session, event) {
-  const clickedId = session.id;
-  const order = lastVisibleSessionIds;
-  if (event?.shiftKey && state.selectionAnchorId && order.includes(state.selectionAnchorId) && order.includes(clickedId)) {
-    const [from, to] = [order.indexOf(state.selectionAnchorId), order.indexOf(clickedId)].sort((a, b) => a - b);
-    for (let i = from; i <= to; i++)
-      state.selectedSessionIds.add(order[i]);
-  } else {
-    if (state.selectedSessionIds.has(clickedId))
-      state.selectedSessionIds.delete(clickedId);
-    else
-      state.selectedSessionIds.add(clickedId);
-    state.selectionAnchorId = clickedId;
-  }
-  disarmBulkConfirm();
-  render();
-}
-
-function clearSessionSelection() {
-  state.selectedSessionIds = new Set();
-  state.selectionAnchorId = null;
-  disarmBulkConfirm();
-  render();
-}
-
-async function closeSelectedSessions() {
-  const ids = [...state.selectedSessionIds];
-  disarmBulkConfirm();
-  state.confirmCloseId = null;
-  const byId = new Map((state.sessions || []).map((item) => [item.id, item]));
-  let closed = 0;
-  let failed = 0;
-  let firstError = "";
-  for (const id of ids) {
-    const session = byId.get(id);
-    if (!session)
-      continue;
-    try {
-      const response = await postCloseSession(session);
-      if (response?.ok) {
-        closed++;
-        state.selectedSessionIds.delete(id);
-      } else {
-        failed++;
-        firstError = firstError || response?.error || "";
-      }
-    } catch (error) {
-      failed++;
-      firstError = firstError || error?.message || "";
-    }
-  }
-  if (closed && !failed)
-    toast("success", closed === 1 ? "Closed 1 session" : `Closed ${closed} sessions`, 2500);
-  else if (closed && failed)
-    toast("error", `Closed ${closed} session${closed === 1 ? "" : "s"}, ${failed} failed`);
-  else if (failed)
-    toast("error", firstError || (failed === 1 ? "Failed to close 1 session" : `Failed to close ${failed} sessions`));
-  fetchSessions();
-}
-
 async function disconnectTab() {
   try {
     const response = await sendPanelMessage({ type: "disconnect_tab" });
@@ -353,7 +198,6 @@ async function disconnectTab() {
       toast("error", response?.error || "Failed to disconnect");
       return;
     }
-    state.settingsOpen = false;
     render();
   } catch (error) {
     toast("error", error?.message || String(error));
@@ -451,7 +295,8 @@ async function sendQueue() {
     if (response?.ok) {
       const sent = response.sent || 0;
       state.sendFailed = null;
-      toast("success", sent === 1 ? "Sent 1 annotation to OpenCode" : `Sent ${sent} annotations to OpenCode`);
+      const agent = agentLabel(state.claim?.agent);
+      toast("success", sent === 1 ? `Sent 1 annotation to ${agent}` : `Sent ${sent} annotations to ${agent}`);
     } else {
       state.sendFailed = {
         sent: response?.sent || 0,
@@ -541,7 +386,7 @@ function formatUnsentMarkdown(entries) {
   const list = Array.isArray(entries) ? entries : [];
   const screenshotsRetained = list.filter((entry) => entry?.hasScreenshot).length;
   const header = [
-    `# Unsent annotations (${list.length}), paste into OpenCode chat`,
+    `# Unsent annotations (${list.length}), paste into your chat`,
     screenshotsRetained
       ? `${screenshotsRetained} screenshot(s) retained in queue for retry (screenshots are not embedded in clipboard).`
       : "No screenshots retained for these annotations.",
@@ -630,8 +475,8 @@ function formatHistoryMarkdown(attempt) {
   const snapshots = Array.isArray(attempt?.snapshots) ? attempt.snapshots : [];
   const status = attempt?.status === "sent" ? "sent" : attempt?.status === "partial" ? "partial" : "failed";
   const header = status === "sent"
-    ? [`# Sent annotations (${snapshots.length}), paste into OpenCode chat`, ""].join("\n")
-    : [`# Annotation attempt ${status} (${snapshots.length}), paste into OpenCode chat`, ""].join("\n");
+    ? [`# Sent annotations (${snapshots.length}), paste into your chat`, ""].join("\n")
+    : [`# Annotation attempt ${status} (${snapshots.length}), paste into your chat`, ""].join("\n");
   const blocks = snapshots.map((entry, index) => formatAnnotationBlock(entry, index, snapshots.length));
   return `${header}\n${blocks.join("\n\n---\n\n")}\n`;
 }
@@ -661,12 +506,13 @@ function projectNameFor(directory) {
   return segments.length ? segments[segments.length - 1] : directory || "Unknown project";
 }
 
-// Stable color per project directory, used for the list-item dot.
+// Stable color per project directory. FNV-1a then the golden angle, because a
+// plain mod-360 hash clusters paths that share a prefix into one hue.
 function projectHue(directory) {
-  let hash = 0;
+  let hash = 2166136261;
   for (const ch of directory || "")
-    hash = (hash * 31 + ch.charCodeAt(0)) % 360;
-  return hash;
+    hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
+  return Math.round(((hash >>> 0) * 137.508) % 360);
 }
 
 function formatRelative(ts) {
@@ -698,331 +544,11 @@ function toastNode() {
   });
 }
 
-function sortedSessionGroups(sessionList) {
-  const groups = [];
-  const byDirectory = new Map();
-  const sorted = [...(sessionList || [])].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  for (const item of sorted) {
-    const dir = item.directory || "";
-    let group = byDirectory.get(dir);
-    if (!group) {
-      group = { directory: dir, items: [] };
-      byDirectory.set(dir, group);
-      groups.push(group);
-    }
-    group.items.push(item);
-  }
-  groups.sort((a, b) => (b.items[0]?.updatedAt || 0) - (a.items[0]?.updatedAt || 0));
-  return groups;
-}
-
-// Rows get a staggered entrance animation only when this is armed (initial
-// load, project-chip toggles) - the whole UI re-renders on every keystroke, so
-// a permanent animation would flicker while typing.
-function animateListOnce() {
-  state.animateList = true;
-  render();
-  if (state.animateListTimer)
-    clearTimeout(state.animateListTimer);
-  state.animateListTimer = setTimeout(() => {
-    state.animateList = false;
-  }, 400);
-}
-
-function sessionRowNode(item, index, linkedId) {
-  const isLinked = Boolean(linkedId) && item.id === linkedId;
-  const isConfirming = state.confirmCloseId === item.id;
-  const isSelected = state.selectedSessionIds.has(item.id);
-  return h("div", {
-    className: `session-row${isSelected ? " selected" : ""}${isConfirming ? " confirming" : ""}${state.animateList ? " anim" : ""}`,
-    attrs: { style: `--i:${index}` }
-  }, [
-    h("input", {
-      className: "session-select",
-      checked: isSelected,
-      attrs: { type: "checkbox", "aria-label": `Select session ${item.title || item.id}` },
-      on: {
-        click: (event) => toggleSessionSelected(item, event)
-      }
-    }),
-    h("button", {
-      className: "session-item",
-      attrs: { type: "button", title: "Connect this tab to this chat" },
-      disabled: Boolean(state.connectingId),
-      on: {
-        click: () => connectSession(item)
-      }
-    }, [
-      h("div", { className: "row" }, [
-        h("div", { className: "session-name grow", text: item.title || item.id }),
-        isLinked ? h("span", { className: "linked-chip", text: "Linked" }) : null,
-        state.connectingId === item.id ? h("span", { className: "session-date", text: "Connecting…" }) : null,
-        h("span", { className: "session-date", text: formatRelative(item.updatedAt) })
-      ]),
-      h("div", { className: "session-meta" }, [
-        h("span", {
-          className: `agent-glyph${item.agent === "claude-code" ? " claude" : ""}`,
-          attrs: { "aria-hidden": "true" }
-        }, [brandIcon(item.agent === "claude-code" ? "claude" : "opencode", 13)]),
-        h("span", {
-          className: "project-dot",
-          attrs: { style: `--dot:${projectHue(item.directory)}`, "aria-hidden": "true" }
-        }),
-        h("span", {
-          className: "project-name",
-          text: projectNameFor(item.directory) || item.id,
-          attrs: { title: item.directory || item.id }
-        })
-      ])
-    ]),
-    h("button", {
-      className: `session-close${isConfirming ? " confirm" : ""}`,
-      text: isConfirming ? "Close?" : "×",
-      attrs: { type: "button", "aria-label": isConfirming ? `Confirm closing session ${item.title || item.id}` : `Close session ${item.title || item.id}`, title: isConfirming ? "Click again to close" : "Close session" },
-      on: {
-        click: () => {
-          if (isConfirming) {
-            closeSession(item);
-            return;
-          }
-          armConfirmClose(item.id);
-        }
-      }
-    })
-  ]);
-}
-
-function sessionsNode() {
-  const root = h("div", { className: "section" });
-  root.appendChild(h("div", { className: "header" }, [
-    h("div", { className: "row" }, [
-      h("img", { attrs: { src: "icons/icon48.png", alt: "", class: "logo" } }),
-      h("div", { className: "title", text: "Connect this tab to OpenCode" })
-    ]),
-    h("button", {
-      className: "icon-btn",
-      attrs: { type: "button", "aria-label": "Refresh chat list", title: "Refresh chat list" },
-      on: { click: fetchSessions }
-    }, [icon("refresh")])
-  ]));
-  if (!state.fetchingSessionsStarted || state.fetchingSessions) {
-    root.appendChild(h("div", { className: "hint", text: "Looking for OpenCode…", attrs: { role: "status" } }));
-    return root;
-  }
-  if (!Array.isArray(state.sessions) || !state.sessions.length) {
-    root.appendChild(emptyStateNode());
-    return root;
-  }
-  const rawSessions = state.sessions || [];
-  const sessions = state.agentFilter
-    ? rawSessions.filter((item) => item.agent === state.agentFilter)
-    : rawSessions;
-  const groups = sortedSessionGroups(sessions);
-  const query = state.searchQuery.trim().toLowerCase();
-  const searching = query.length > 0;
-  const matches = (item) => !query
-    || `${item.title || ""} ${item.directory || ""}`.toLowerCase().includes(query);
-  const scoped = groups.filter((group) => !state.activeProject || group.directory === state.activeProject);
-  const flat = scoped.flatMap((group) => group.items).filter(matches);
-  const rows = flat;
-  const agentName = state.agentFilter === "claude-code" ? "Claude Code" : state.agentFilter === "opencode" ? "OpenCode" : "";
-
-  const searchRow = h("div", { className: "row" }, [
-    (() => {
-      const searchInput = h("input", {
-        className: "search grow",
-        attrs: { type: "text", placeholder: "Search chats…", "aria-label": "Search chats", spellcheck: "false", autocomplete: "off" }
-      });
-      searchInput.value = state.searchQuery;
-      searchInput.addEventListener("input", () => {
-        state.searchQuery = searchInput.value;
-        render();
-      });
-      return searchInput;
-    })(),
-    h("div", {
-      className: "agent-tabs",
-      attrs: { role: "group", "aria-label": "Filter chats by agent" }
-    }, [
-      { value: "", label: "All chats" },
-      { value: "claude-code", label: "Claude Code chats" },
-      { value: "opencode", label: "OpenCode chats" }
-    ].map((tab) => h("button", {
-      className: `agent-tab${state.agentFilter === tab.value ? " active" : ""}`,
-      attrs: { type: "button", "aria-pressed": String(state.agentFilter === tab.value), "aria-label": tab.label, title: tab.label },
-      on: {
-        click: () => {
-          state.agentFilter = tab.value;
-          state.chipFit = null;
-          animateListOnce();
-        }
-      }
-    }, [tab.value === "" ? icon("crosshair", 12) : brandIcon(tab.value === "claude-code" ? "claude" : "opencode", 14)])))
-  ]);
-  root.appendChild(searchRow);
-  if (state.agentFilter && !sessions.length) {
-    root.appendChild(h("div", {
-      className: "hint",
-      attrs: { role: "status" },
-      text: `No ${agentName} chats are running right now.`
-    }));
-    return root;
-  }
-  if (groups.length > 1) {
-    // Collapsed: All + the latest projects on one auto-fitted line, with a
-    // "+N projects" toggle pinned right. Expanded: the line keeps the latest
-    // projects and the remaining ones flow beneath it.
-    const showAllChips = state.showAllProjects || searching;
-    const chipDefs = [{ label: `All (${sessions.length})`, value: "" }].concat(groups.map((group) => ({
-      label: `${projectNameFor(group.directory)} (${group.items.length})`,
-      value: group.directory
-    })));
-    const maxProjects = state.chipFit == null ? 3 : state.chipFit;
-    let headDefs = chipDefs.slice(0, 1 + Math.min(3, groups.length));
-    if (!showAllChips && groups.length > maxProjects)
-      headDefs = chipDefs.slice(0, 1 + maxProjects);
-    if (state.activeProject && !headDefs.some((def) => def.value === state.activeProject)) {
-      const activeDef = chipDefs.find((def) => def.value === state.activeProject);
-      if (activeDef)
-        headDefs.push(activeDef);
-    }
-    const tailDefs = chipDefs.filter((def) => def.value && !headDefs.includes(def));
-    const chipFor = (def) => h("button", {
-      className: `chip${state.activeProject === def.value ? " active" : ""}`,
-      attrs: { type: "button", "aria-pressed": state.activeProject === def.value },
-      on: {
-        click: () => {
-          state.activeProject = def.value;
-          state.chipFit = null;
-          render();
-        }
-      }
-    }, [
-      def.value
-        ? h("span", { className: "project-dot", attrs: { style: `--dot:${projectHue(def.value)}`, "aria-hidden": "true" } })
-        : null,
-      h("span", { text: def.label })
-    ]);
-    const chipsWrap = h("div", { className: "chips-wrap" });
-    const chipsRow = h("div", { className: `chips${showAllChips ? " expanded" : ""}` });
-    for (const def of headDefs)
-      chipsRow.appendChild(chipFor(def));
-    chipsWrap.appendChild(chipsRow);
-    if (tailDefs.length || showAllChips) {
-      chipsWrap.appendChild(h("button", {
-        className: "chip toggle",
-        text: showAllChips ? "Fewer" : `+${tailDefs.length} project${tailDefs.length === 1 ? "" : "s"}`,
-        attrs: { type: "button", "aria-expanded": String(showAllChips), "aria-label": showAllChips ? "Show recent projects only" : "Show all projects" },
-        on: {
-          click: () => {
-            state.showAllProjects = !state.showAllProjects;
-            state.chipFit = null;
-            animateChipsOnce();
-          }
-        }
-      }));
-    }
-    root.appendChild(chipsWrap);
-    if (showAllChips && tailDefs.length) {
-      const moreRow = h("div", { className: `chips-more${state.animateChips ? " anim" : ""}` });
-      for (const def of tailDefs)
-        moreRow.appendChild(chipFor(def));
-      root.appendChild(moreRow);
-    }
-  }
-  const linkedId = state.claim?.sessionId || null;
-  lastVisibleSessionIds = rows.map((item) => item.id);
-  if (state.selectedSessionIds.size) {
-    const count = state.selectedSessionIds.size;
-    const isBulkConfirming = state.confirmBulkClose;
-    root.appendChild(h("div", { className: "bulk-bar" }, [
-      h("span", { className: "bulk-count", text: `${count} selected` }),
-      h("button", {
-        className: `btn small${isBulkConfirming ? " confirm" : ""}`,
-        text: isBulkConfirming ? "Confirm?" : `Close ${count} session${count === 1 ? "" : "s"}`,
-        attrs: { type: "button", "aria-label": `Close ${count} selected session${count === 1 ? "" : "s"}`, title: isBulkConfirming ? "Click again to close" : "Close selected sessions" },
-        on: {
-          click: () => {
-            if (isBulkConfirming) {
-              closeSelectedSessions();
-              return;
-            }
-            armBulkConfirm();
-          }
-        }
-      }),
-      h("button", {
-        className: "btn small",
-        text: "Clear",
-        attrs: { type: "button", "aria-label": "Clear session selection", title: "Clear selection" },
-        on: { click: clearSessionSelection }
-      })
-    ]));
-  }
-  const listContainer = h("div", { className: "list" });
-  if (searching) {
-    root.appendChild(h("div", { className: "results-row" }, [
-      h("span", { className: "results-label", text: "Results" }),
-      h("span", { className: "results-count" }, [
-        h("span", { text: flat.length ? `${flat.length} of ${sessions.length}` : "No matches" }),
-        h("button", {
-          className: "icon-btn search-clear",
-          text: "×",
-          attrs: { type: "button", "aria-label": "Clear search" },
-          on: {
-            click: () => {
-              state.searchQuery = "";
-              render();
-              document.querySelector(".search")?.focus();
-            }
-          }
-        })
-      ])
-    ]));
-  }
-  rows.forEach((item, index) => listContainer.appendChild(sessionRowNode(item, index, linkedId)));
-  root.appendChild(listContainer);
-  return root;
-}
-
-function emptyStateNode() {
-  const reason = state.sessionsContext?.reason;
-  const content = reason === "no-sessions"
-    ? {
-      title: "No OpenCode session available",
-      text: "The plugin is running, but OpenCode has no open session to connect to.",
-      steps: [
-        "Open OpenCode in the project you want to edit",
-        "Make sure the annotation plugin is enabled in that OpenCode config",
-        "Restart OpenCode if you just changed the config"
-      ]
-    }
-    : {
-      title: "OpenCode plugin not found",
-      text: "No annotation server is running on ports 39240–39260. OpenCode needs the opencode-annotate plugin to start one.",
-      steps: [
-        "Add \"opencode-annotate\" to \"plugins\" in your OpenCode config",
-        "Restart OpenCode in your project",
-        "Come back here and press Try again"
-      ]
-    };
-  return h("div", {}, [
-    h("div", { className: "empty-icon" }, [icon("plug", 16)]),
-    h("div", { className: "empty-title", text: content.title }),
-    h("p", { className: "empty-text", text: content.text }),
-    h("ol", { className: "empty-list" }, content.steps.map((step) => h("li", { text: step }))),
-    h("div", { className: "row end" }, [
-      h("button", {
-        className: "btn",
-        text: "Try again",
-        attrs: { type: "button" },
-        on: { click: fetchSessions }
-      })
-    ])
-  ]);
-}
-
+// One primary action at a time: Add to queue while composing, otherwise
+// Select element while the queue is empty and Send all once it is not.
 function toolbarNode() {
+  const hasQueue = state.queue.length > 0;
+  const sendIsPrimary = hasQueue && !state.selection;
   const children = [];
   if (state.selection) {
     children.push(h("button", {
@@ -1033,7 +559,7 @@ function toolbarNode() {
     }));
   } else {
     children.push(h("button", {
-      className: "btn primary",
+      className: `btn${hasQueue ? "" : " primary"}`,
       attrs: { type: "button" },
       on: { click: startAnnotation }
     }, [icon("crosshair"), h("span", { text: "Select element" })]));
@@ -1041,43 +567,14 @@ function toolbarNode() {
       children.push(addedTickNode());
   }
   children.push(h("button", {
-    className: "btn primary",
+    className: `btn${sendIsPrimary ? " primary" : ""}`,
     attrs: { type: "button" },
-    disabled: state.pending || !state.queue.length,
+    disabled: state.pending || !hasQueue,
     on: { click: sendQueue }
   }, [icon("send"), h("span", {
-    text: state.pending ? "Sending…" : state.queue.length ? `Send all (${state.queue.length})` : "Send all"
+    text: state.pending ? "Sending…" : hasQueue ? `Send all (${state.queue.length})` : "Send all"
   })]));
-  children.push(h("div", { className: "grow" }));
-  children.push(h("button", {
-    className: "icon-btn",
-    attrs: { type: "button", "aria-label": "Settings", title: "Settings" },
-    on: {
-      click: () => {
-        state.settingsOpen = !state.settingsOpen;
-        render();
-      }
-    }
-  }, [icon("gear")]));
   return h("div", { className: "toolbar" }, children);
-}
-
-function settingsNode() {
-  const claim = state.claim;
-  return h("div", { className: "card" }, [
-    h("div", { className: "row" }, [
-      icon("link"),
-      h("div", { className: "hint grow", text: `Linked chat: ${claim.sessionLabel || claim.sessionId || "Connected"}` })
-    ]),
-    h("div", { className: "row end" }, [
-      h("button", {
-        className: "btn small",
-        text: "Disconnect",
-        attrs: { type: "button" },
-        on: { click: disconnectTab }
-      })
-    ])
-  ]);
 }
 
 function selectionNode() {
@@ -1092,13 +589,23 @@ function selectionNode() {
   }
   const root = h("div", { className: "card" });
   const info = selection.element || {};
-  root.appendChild(h("div", {
-    className: "element-info",
-    text: `${info.tag || ""} ${info.selector || ""}`.trim() || "Selected element"
-  }));
+  root.appendChild(h("div", { className: "element-row" }, [
+    h("div", {
+      className: "element-info grow",
+      text: `${info.tag || ""} ${info.selector || ""}`.trim() || "Selected element"
+    }),
+    h("button", {
+      className: "btn small",
+      text: "Reselect",
+      attrs: { type: "button" },
+      disabled: state.pending,
+      on: { click: reselectElement }
+    })
+  ]));
+  const agent = agentLabel(state.claim?.agent);
   const textarea = h("textarea", {
     className: "textarea",
-    attrs: { placeholder: "What should OpenCode change here?", "aria-label": "Instruction for OpenCode" }
+    attrs: { placeholder: `What should ${agent} change here?`, "aria-label": `Instruction for ${agent}` }
   });
   textarea.value = state.draft;
   textarea.addEventListener("input", () => {
@@ -1128,13 +635,6 @@ function selectionNode() {
       on: { click: () => submitSelection(true) }
     })
   ]));
-  root.appendChild(h("button", {
-    className: "btn small",
-    text: "Reselect",
-    attrs: { type: "button" },
-    disabled: state.pending,
-    on: { click: reselectElement }
-  }));
   return root;
 }
 
@@ -1206,14 +706,6 @@ function queueNode() {
     ]));
   });
   root.appendChild(listContainer);
-  root.appendChild(h("div", { className: "queue-footer" }, [
-    h("button", {
-      className: "btn small full",
-      attrs: { type: "button", "aria-label": `Copy ${state.queue.length} unsent annotations to clipboard` },
-      disabled: state.copying || state.pending,
-      on: { click: copyUnsent }
-    }, [icon("copy"), h("span", { text: state.copying ? "Copying…" : `Copy unsent (${state.queue.length})` })])
-  ]));
   return root;
 }
 
@@ -1285,18 +777,30 @@ function historyNode() {
 function linkedChatNode() {
   const claim = state.claim;
   const label = claim?.sessionLabel || claim?.sessionId || "Connected";
-  return h("div", { className: "row" }, [
-    icon("link"),
-    claim?.agent === "claude-code"
-      ? h("span", { className: "agent-glyph claude", attrs: { "aria-hidden": "true" } }, [brandIcon("claude", 13)])
-      : null,
-    claim?.projectDirectory
-      ? h("span", {
+  const project = claim?.projectDirectory
+    ? h("span", { className: "linked-project" }, [
+      h("span", {
         className: "project-dot",
         attrs: { style: `--dot:${projectHue(claim.projectDirectory)}`, "aria-hidden": "true" }
-      })
-      : null,
-    h("div", { className: "linked-label grow", text: label, attrs: { title: label } })
+      }),
+      h("span", { className: "project-name", text: projectNameFor(claim.projectDirectory), attrs: { title: claim.projectDirectory } })
+    ])
+    : null;
+  return h("div", { className: "linked" }, [
+    agentGlyph(claim?.agent, 14),
+    h("div", { className: "grow" }, [
+      h("div", { className: "linked-label", text: label, attrs: { title: label } }),
+      h("div", { className: "linked-meta" }, [
+        h("span", { text: agentLabel(claim?.agent) }),
+        project
+      ])
+    ]),
+    h("button", {
+      className: "btn small",
+      text: "Switch",
+      attrs: { type: "button", title: "Disconnect and pick another chat", "aria-label": "Disconnect and pick another chat" },
+      on: { click: disconnectTab }
+    })
   ]);
 }
 
@@ -1304,8 +808,6 @@ function connectedNode() {
   const root = h("div", { className: "contents" });
   root.appendChild(toolbarNode());
   root.appendChild(linkedChatNode());
-  if (state.settingsOpen)
-    root.appendChild(settingsNode());
   const selection = selectionNode();
   if (selection)
     root.appendChild(selection);
@@ -1334,36 +836,6 @@ function buildUI() {
 }
 
 const FOCUSABLE = "button, input, textarea";
-
-// Collapsed chips: measure whether All + chips + toggle fit on one line and
-// shrink the project count (3 -> 2 -> 1) until they do. Runs after render;
-// chipFit is reset to null by anything that changes the chips or on resize.
-let chipFitting = false;
-function animateChipsOnce() {
-  state.animateChips = true;
-  render();
-  if (state.animateChipsTimer)
-    clearTimeout(state.animateChipsTimer);
-  state.animateChipsTimer = setTimeout(() => {
-    state.animateChips = false;
-  }, 400);
-}
-
-function fitProjectChips() {
-  if (chipFitting)
-    return;
-  if (state.chipFit == null)
-    state.chipFit = 3;
-  for (let guard = 0; guard < 3; guard++) {
-    const row = document.querySelector(".chips:not(.expanded)");
-    if (!row || state.chipFit <= 1 || row.scrollWidth <= row.clientWidth + 1)
-      return;
-    state.chipFit -= 1;
-    chipFitting = true;
-    render();
-    chipFitting = false;
-  }
-}
 
 function render() {
   // The whole UI is rebuilt on every render, so remember which control had
@@ -1423,9 +895,16 @@ chrome.tabs.onActivated.addListener(() => {
   refreshState();
 });
 
+// Resize fires per pixel while dragging the panel edge; rebuild once a frame.
+let resizeFrame = 0;
 window.addEventListener("resize", () => {
-  state.chipFit = null;
-  render();
+  if (resizeFrame)
+    return;
+  resizeFrame = requestAnimationFrame(() => {
+    resizeFrame = 0;
+    state.chipFit = null;
+    render();
+  });
 });
 
 document.addEventListener("keydown", (event) => {
