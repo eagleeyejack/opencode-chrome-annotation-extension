@@ -204,26 +204,55 @@ function animateListOnce() {
   }, 400);
 }
 
+// Claude Code chats can't be closed from here (the bridge refuses), so they
+// get spacers instead of controls that would always fail.
+function sessionSelectNode(item, isSelected) {
+  if (!agentOf(item.agent).closable)
+    return h("span", { className: "session-select-spacer" });
+  return h("input", {
+    className: "session-select",
+    checked: isSelected,
+    attrs: { type: "checkbox", "aria-label": `Select session ${item.title || item.id}` },
+    on: {
+      click: (event) => toggleSessionSelected(item, event)
+    }
+  });
+}
+
+function sessionCloseNode(item, isConfirming) {
+  if (!agentOf(item.agent).closable)
+    return h("span", { className: "session-close-spacer" });
+  const name = item.title || item.id;
+  return h("button", {
+    className: `session-close${isConfirming ? " confirm" : ""}`,
+    text: isConfirming ? "Close?" : "×",
+    attrs: {
+      type: "button",
+      "aria-label": isConfirming ? `Confirm closing session ${name}` : `Close session ${name}`,
+      title: isConfirming ? "Click again to close" : "Close session"
+    },
+    on: {
+      click: () => {
+        if (isConfirming) {
+          closeSession(item);
+          return;
+        }
+        armConfirmClose(item.id);
+      }
+    }
+  });
+}
+
 function sessionRowNode(item, index, linkedId) {
   const isLinked = Boolean(linkedId) && item.id === linkedId;
   const isConfirming = state.confirmCloseId === item.id;
   const isSelected = state.selectedSessionIds.has(item.id);
-  // Claude Code chats can't be closed from here (the bridge refuses), so
-  // they get spacers instead of controls that would always fail.
-  const closable = agentOf(item.agent).closable;
   return h("div", {
     className: `session-row${isSelected ? " selected" : ""}${isConfirming ? " confirming" : ""}${state.animateList ? " anim" : ""}`,
     // Cap the stagger so long lists don't trickle in for seconds.
     attrs: { style: `--i:${Math.min(index, 12)}` }
   }, [
-    !closable ? h("span", { className: "session-select-spacer" }) : h("input", {
-      className: "session-select",
-      checked: isSelected,
-      attrs: { type: "checkbox", "aria-label": `Select session ${item.title || item.id}` },
-      on: {
-        click: (event) => toggleSessionSelected(item, event)
-      }
-    }),
+    sessionSelectNode(item, isSelected),
     h("button", {
       className: "session-item",
       attrs: { type: "button", title: "Connect this tab to this chat" },
@@ -251,20 +280,7 @@ function sessionRowNode(item, index, linkedId) {
         })
       ])
     ]),
-    !closable ? h("span", { className: "session-close-spacer" }) : h("button", {
-      className: `session-close${isConfirming ? " confirm" : ""}`,
-      text: isConfirming ? "Close?" : "×",
-      attrs: { type: "button", "aria-label": isConfirming ? `Confirm closing session ${item.title || item.id}` : `Close session ${item.title || item.id}`, title: isConfirming ? "Click again to close" : "Close session" },
-      on: {
-        click: () => {
-          if (isConfirming) {
-            closeSession(item);
-            return;
-          }
-          armConfirmClose(item.id);
-        }
-      }
-    })
+    sessionCloseNode(item, isConfirming)
   ]);
 }
 

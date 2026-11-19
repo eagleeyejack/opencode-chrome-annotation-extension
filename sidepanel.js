@@ -777,15 +777,16 @@ function historyNode() {
 function linkedChatNode() {
   const claim = state.claim;
   const label = claim?.sessionLabel || claim?.sessionId || "Connected";
-  const project = claim?.projectDirectory
-    ? h("span", { className: "linked-project" }, [
+  let project = null;
+  if (claim?.projectDirectory) {
+    project = h("span", { className: "linked-project" }, [
       h("span", {
         className: "project-dot",
         attrs: { style: `--dot:${projectHue(claim.projectDirectory)}`, "aria-hidden": "true" }
       }),
       h("span", { className: "project-name", text: projectNameFor(claim.projectDirectory), attrs: { title: claim.projectDirectory } })
-    ])
-    : null;
+    ]);
+  }
   return h("div", { className: "linked" }, [
     agentGlyph(claim?.agent, 14),
     h("div", { className: "grow" }, [
