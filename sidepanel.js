@@ -695,7 +695,7 @@ function queueNode() {
       }, [icon("copy"), h("span", { text: state.queue.length === 1 ? "Copy unsent annotation" : `Copy ${state.queue.length} unsent` })])
     ]));
   }
-  const listContainer = h("div", { className: "list" });
+  const listContainer = h("div", { className: "list cards" });
   state.queue.forEach((entry, index) => {
     const rawComment = typeof entry.comment === "string" ? entry.comment.trim() : "";
     const label = `${entry.tag || ""} ${entry.selector || ""}`.trim() || "element";
@@ -726,67 +726,94 @@ function queueNode() {
   return root;
 }
 
-function historyStatusLabel(status) {
-  if (status === "sent")
-    return "Sent";
-  if (status === "partial")
-    return "Partial";
-  return "Failed";
+function historyStatus(attempt) {
+  if (attempt?.status === "sent" || attempt?.status === "partial")
+    return attempt.status;
+  return "failed";
+}
+
+const HISTORY_BADGES = {
+  sent: { label: "Sent", mark: "✓" },
+  partial: { label: "Partly sent", mark: "~" },
+  failed: { label: "Failed", mark: "!" }
+};
+
+function historySummary(snapshots, totalCount) {
+  const first = snapshots.find((entry) => typeof entry?.comment === "string" && entry.comment.trim());
+  const count = snapshots.length || totalCount;
+  if (!first)
+    return count === 1 ? "1 annotation" : `${count} annotations`;
+  const text = first.comment.trim();
+  if (count > 1)
+    return `${text} (+${count - 1} more)`;
+  return text;
+}
+
+function historyItemNode(attempt) {
+  const status = historyStatus(attempt);
+  const badge = HISTORY_BADGES[status];
+  const sentCount = Number(attempt?.sentCount) || 0;
+  const totalCount = Number(attempt?.totalCount) || 0;
+  const when = formatRelative(attempt?.timestamp);
+  const stamp = Number(attempt?.timestamp) ? new Date(attempt.timestamp).toLocaleString() : "";
+  const snapshots = Array.isArray(attempt?.snapshots) ? attempt.snapshots : [];
+  let meta = `${badge.label} · ${sentCount} of ${totalCount}`;
+  if (when)
+    meta += ` · ${when}`;
+  let error = null;
+  if (status !== "sent" && attempt?.error) {
+    const message = String(attempt.error);
+    error = h("div", {
+      className: "history-error",
+      text: message.length > 160 ? `${message.slice(0, 160)}…` : message,
+      attrs: { title: message }
+    });
+  }
+  let retry = null;
+  if (status !== "sent") {
+    retry = h("button", {
+      className: "btn small",
+      attrs: { type: "button", title: "Re-send the still-queued entries" },
+      disabled: state.pending || state.copying || !state.queue.length,
+      on: { click: sendQueue }
+    }, [icon("send"), h("span", { text: "Retry" })]);
+  }
+  return h("div", { className: `history-item ${status}` }, [
+    h("span", { className: `history-mark ${status}`, text: badge.mark, attrs: { "aria-hidden": "true" } }),
+    h("div", { className: "grow" }, [
+      h("div", { className: "history-summary", text: historySummary(snapshots, totalCount) }),
+      h("div", { className: "queue-selector", text: meta, attrs: stamp ? { title: stamp } : {} }),
+      error
+    ]),
+    h("div", { className: "queue-item-actions" }, [
+      retry,
+      h("button", {
+        className: "icon-btn",
+        attrs: {
+          type: "button",
+          "aria-label": "Copy this attempt's annotations to clipboard",
+          title: snapshots.length ? "Copy this attempt's annotations" : "No snapshot for this attempt"
+        },
+        disabled: state.copying || state.pending || !snapshots.length,
+        on: { click: () => copyHistoryAttempt(attempt) }
+      }, [icon("copy")])
+    ])
+  ]);
 }
 
 function historyNode() {
   if (!Array.isArray(state.history) || !state.history.length)
     return null;
   const root = h("div", { className: "section" });
-  root.appendChild(h("div", { className: "row between" }, [
-    h("div", { className: "title", text: "Send history" }),
-    h("div", { className: "hint", text: "latest first" })
+  root.appendChild(h("div", { className: "section-head" }, [
+    h("div", { className: "title grow" }, [
+      h("span", { text: "Sent" }),
+      h("span", { className: "count quiet", text: String(state.history.length) })
+    ])
   ]));
-  const listContainer = h("div", { className: "list" });
-  for (const attempt of state.history) {
-    const status = attempt?.status === "sent" ? "sent" : attempt?.status === "partial" ? "partial" : "failed";
-    const sentCount = Number(attempt?.sentCount) || 0;
-    const totalCount = Number(attempt?.totalCount) || 0;
-    const when = formatRelative(attempt?.timestamp);
-    const stamp = Number(attempt?.timestamp) ? new Date(attempt.timestamp).toLocaleString() : "";
-    const canRetry = status !== "sent" && state.queue.length > 0;
-    const snapshots = Array.isArray(attempt?.snapshots) ? attempt.snapshots : [];
-    const canCopyHistory = snapshots.length > 0;
-    const row = h("div", { className: "history-item" });
-    row.appendChild(h("div", { className: "row between" }, [
-      h("div", { className: "row" }, [
-        h("span", { className: `status-chip ${status}`, text: historyStatusLabel(status) }),
-        h("span", { className: "queue-meta", text: `${sentCount} of ${totalCount} sent${when ? ` · ${when}` : ""}`, attrs: stamp ? { title: stamp } : {} })
-      ]),
-      h("div", { className: "history-actions" }, [
-        status === "sent" ? null : h("button", {
-          className: "btn small",
-          attrs: { type: "button", title: "Re-send the still-queued entries" },
-          disabled: state.pending || state.copying || !canRetry,
-          on: { click: sendQueue }
-        }, [icon("send"), h("span", { text: "Retry" })]),
-        h("button", {
-          className: "icon-btn",
-          attrs: {
-            type: "button",
-            "aria-label": "Copy this attempt's annotations to clipboard",
-            title: canCopyHistory ? "Copy this attempt's annotations to clipboard" : "No snapshot for this attempt"
-          },
-          disabled: state.copying || state.pending || !canCopyHistory,
-          on: { click: () => copyHistoryAttempt(attempt) }
-        }, [icon("copy")])
-      ])
-    ]));
-    if (status !== "sent" && attempt?.error) {
-      const message = String(attempt.error);
-      row.appendChild(h("div", {
-        className: "history-error",
-        text: message.length > 160 ? `${message.slice(0, 160)}…` : message,
-        attrs: { title: message }
-      }));
-    }
-    listContainer.appendChild(row);
-  }
+  const listContainer = h("div", { className: "list cards" });
+  for (const attempt of state.history)
+    listContainer.appendChild(historyItemNode(attempt));
   root.appendChild(listContainer);
   return root;
 }
