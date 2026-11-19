@@ -66,9 +66,21 @@
         fakeState.queue = [
           {
             id: "dev-queue-1",
-            comment: "Move the CTA above the fold and make the button label clearer.",
+            comment: "The pricing card jumps when the billing toggle switches. Keep the height fixed so the CTA doesn't move.",
+            tag: "section",
+            selector: "#pricing .pricing-grid"
+          },
+          {
+            id: "dev-queue-2",
+            comment: "This CTA reads 'Start free trial' but goes to a signup form asking for a card. Either rename it or link it to the email-only signup.",
             tag: "button",
             selector: "#pricing .cta-primary"
+          },
+          {
+            id: "dev-queue-3",
+            comment: "Contrast on the footnote text is too low against the gray background - hard to read on an outdoor screen.",
+            tag: "p",
+            selector: "#pricing .footnote"
           }
         ];
         fakeState.selection = {
@@ -129,7 +141,7 @@
     },
     sendMessage: async (message) => {
       const handler = responses[message?.type];
-      const response = handler ? handler() : { ok: true };
+      const response = handler ? handler(message) : { ok: true };
       // The real background broadcasts state changes; emulate that so the
       // panel refreshes after connect/disconnect/queue mutations.
       if (["connect_tab_to_session", "disconnect_tab", "panel_submit_annotation", "clear_queue", "remove_queued_annotation", "send_queued_annotations", "close_session", "panel_cancel_selection"].includes(message?.type))
