@@ -11,13 +11,20 @@ const state = {
   fetchingSessions: false,
   fetchingSessionsStarted: false,
   activeProject: "",
-  confirmCloseId: null,
-  confirmCloseTimer: null,
+  searchQuery: "",
+  agentFilter: "",
+  showAllProjects: false,
+  chipFit: null,
+  animateChips: false,
+  animateChipsTimer: null,
+  animateList: false,
+  animateListTimer: null,
+  selectMode: false,
   selectedSessionIds: new Set(),
   selectionAnchorId: null,
   confirmBulkClose: false,
   confirmBulkTimer: null,
-  settingsOpen: false,
+  lastView: null,
   draft: "",
   pending: false,
   connectingId: null,
@@ -57,19 +64,22 @@ function h(tag, props = {}, children = []) {
   return node;
 }
 
+const BRAND_ICONS = {
+  claude: { viewBox: "0 0 24 24", path: "m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z" },
+  opencode: { viewBox: "194 194 636 706", path: "m316.5 874.49c-9.43 7.73-16.5 12.57-16.5 11.29.01-1.49 12.34-75.52 14.52-87.14.82-4.32 1.48-8.04 1.48-8.25s-6.86-.41-15.25-.42c-24.64-.06-37.92-3.58-54.07-14.32-16.6-11.05-28.23-27.03-34.32-47.15-1.72-5.7-1.83-16.8-2.14-222-.25-160.11-.03-217.94.82-223.5 3.51-22.69 15.91-42.88 35.06-57.07 7.73-5.74 16.11-9.73 27.4-13.07l8-2.36h231c220.59 0 231.29.08 237.5 1.83 8.34 2.34 17.06 6.16 23.94 10.47 18.01 11.31 30.94 28.97 37.33 51.01l2.23 7.69v439l-2.24 8.41c-6.05 22.68-21.47 41.27-43.47 52.4-2.89 1.46-4.85 2.66-6.92 3.65-10.51 5.03-23.65 4.55-174.91 5.03l-160.55.51-6.45 5.08c-3.55 2.8-9.38 7.33-12.96 10.06-3.58 2.74-17.3 13.3-30.5 23.47s-30.75 23.61-39 29.88-17.25 13.24-20 15.5zm58.5-541.49v358h274v-358zm213 61v236h-152v-236z" }
+};
+
 const ICON_PATHS = {
   refresh: '<path d="M10 6a4 4 0 1 1-1.17-2.83M10 1.5V3.5H8"/>',
   crosshair: '<circle cx="6" cy="6" r="3.2"/><path d="M6 .8v2.4M6 8.8v2.4M.8 6h2.4M8.8 6h2.4"/>',
   send: '<path d="M11 1L1 5.5l3.5 2L6 11l5-10z"/><path d="M4.5 7.5L11 1"/>',
-  gear: '<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="6" r="0.9"/><path d="M6 1.9v1.7M6 8.4v1.7M1.9 6h1.7M8.4 6h1.7M2.9 2.9l1.2 1.2M7.9 7.9l1.2 1.2M9.1 2.9L7.9 4.1M4.1 7.9l-1.2 1.2"/>',
   check: '<path d="M2 6.4l2.6 2.6L10 3.4"/>',
   trash: '<path d="M1.8 3.2h8.4M4.4 3.2V2.2h3.2v1M2.8 3.2l.5 6.8h5.4l.5-6.8M4.9 5.4v2.8M7.1 5.4v2.8"/>',
-  link: '<path d="M5 3.2l1-1a2.4 2.4 0 0 1 3.4 3.4l-1 1M7 8.8l-1 1A2.4 2.4 0 0 1 2.6 6.4l1-1"/><path d="M4.4 7.6l3.2-3.2"/>',
   plug: '<path d="M4.2 1.2v2.6M7.8 1.2v2.6M2.6 3.8h6.8v1.8a3.4 3.4 0 0 1-6.8 0V3.8zM6 9v1.8"/>',
   copy: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><path d="M8.5 3.5v-1a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1"/>'
 };
 
-function icon(name, size = 12) {
+function icon(name, size = 14) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 12 12");
   svg.setAttribute("width", String(size));
@@ -78,6 +88,43 @@ function icon(name, size = 12) {
   svg.setAttribute("class", "ic");
   svg.innerHTML = ICON_PATHS[name] || "";
   return svg;
+}
+
+
+function brandIcon(name, size = 13) {
+  const brand = BRAND_ICONS[name];
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", brand.viewBox);
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("class", "brand-ic");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", brand.path);
+  path.setAttribute("fill", "currentColor");
+  svg.appendChild(path);
+  return svg;
+}
+
+const AGENTS = {
+  "claude-code": { label: "Claude Code", icon: "claude", closable: false },
+  opencode: { label: "OpenCode", icon: "opencode", closable: true }
+};
+
+// Sessions without an agent field come from the OpenCode plugin.
+function agentOf(agent) {
+  return AGENTS[agent] || AGENTS.opencode;
+}
+
+function agentLabel(agent) {
+  return agentOf(agent).label;
+}
+
+function agentGlyph(agent, size = 14) {
+  return h("span", {
+    className: `agent-glyph${agent === "claude-code" ? " claude" : ""}`,
+    attrs: { "aria-hidden": "true" }
+  }, [brandIcon(agentOf(agent).icon, size)]);
 }
 
 function addedTickNode() {
@@ -132,8 +179,6 @@ async function refreshState() {
         if (!state.queue.length)
           state.sendFailed = null;
         state.selection = response.selection;
-        if (!response.claim)
-          state.settingsOpen = false;
         if (!response.selection)
           state.draft = "";
         if (previousPhase !== "locked" && response.selection?.phase === "locked")
@@ -145,176 +190,6 @@ async function refreshState() {
   render();
 }
 
-async function fetchSessions() {
-  state.fetchingSessions = true;
-  state.fetchingSessionsStarted = true;
-  state.confirmCloseId = null;
-  disarmBulkConfirm();
-  render();
-  try {
-    const response = await sendPanelMessage({ type: "refresh_sessions" });
-    if (response?.ok) {
-      state.sessions = Array.isArray(response.sessions) ? response.sessions : [];
-      state.sessionsContext = response.context || null;
-      state.activeProject = "";
-      pruneSessionSelection();
-    } else {
-      toast("error", response?.error || "Failed to fetch sessions");
-    }
-  } catch (error) {
-    toast("error", error?.message || String(error));
-  }
-  state.fetchingSessions = false;
-  render();
-}
-
-async function connectSession(session) {
-  if (state.connectingId)
-    return;
-  state.connectingId = session.id;
-  render();
-  try {
-    const response = await sendPanelMessage({ type: "connect_tab_to_session", session });
-    if (!response?.ok)
-      toast("error", response?.error || "Failed to connect");
-  } catch (error) {
-    toast("error", error?.message || String(error));
-  }
-  state.connectingId = null;
-  render();
-}
-
-function armConfirmClose(id) {
-  state.confirmCloseId = id;
-  if (state.confirmCloseTimer)
-    clearTimeout(state.confirmCloseTimer);
-  state.confirmCloseTimer = setTimeout(() => {
-    state.confirmCloseId = null;
-    render();
-  }, 4000);
-  render();
-}
-
-async function postCloseSession(session) {
-  return sendPanelMessage({
-    type: "close_session",
-    sessionId: session.id,
-    baseUrl: session.baseUrl
-  });
-}
-
-async function closeSession(session) {
-  state.confirmCloseId = null;
-  if (state.confirmCloseTimer) {
-    clearTimeout(state.confirmCloseTimer);
-    state.confirmCloseTimer = null;
-  }
-  try {
-    const response = await postCloseSession(session);
-    if (response?.ok) {
-      toast("success", "Session closed", 2500);
-      fetchSessions();
-      return;
-    }
-    toast("error", response?.error || "Failed to close session");
-  } catch (error) {
-    toast("error", error?.message || String(error));
-  }
-}
-
-// Order of session ids as currently visible in the list (grouped/filtered order).
-// Rebuilt on every sessionsNode render; used for shift-click range selection.
-let lastVisibleSessionIds = [];
-
-function pruneSessionSelection() {
-  const liveIds = new Set((state.sessions || []).map((item) => item.id));
-  state.selectedSessionIds = new Set(
-    [...state.selectedSessionIds].filter((id) => liveIds.has(id))
-  );
-  if (state.selectionAnchorId && !liveIds.has(state.selectionAnchorId))
-    state.selectionAnchorId = null;
-}
-
-function disarmBulkConfirm() {
-  state.confirmBulkClose = false;
-  if (state.confirmBulkTimer) {
-    clearTimeout(state.confirmBulkTimer);
-    state.confirmBulkTimer = null;
-  }
-}
-
-function armBulkConfirm() {
-  state.confirmBulkClose = true;
-  if (state.confirmBulkTimer)
-    clearTimeout(state.confirmBulkTimer);
-  state.confirmBulkTimer = setTimeout(() => {
-    state.confirmBulkClose = false;
-    state.confirmBulkTimer = null;
-    render();
-  }, 4000);
-  render();
-}
-
-function toggleSessionSelected(session, event) {
-  const clickedId = session.id;
-  const order = lastVisibleSessionIds;
-  if (event?.shiftKey && state.selectionAnchorId && order.includes(state.selectionAnchorId) && order.includes(clickedId)) {
-    const [from, to] = [order.indexOf(state.selectionAnchorId), order.indexOf(clickedId)].sort((a, b) => a - b);
-    for (let i = from; i <= to; i++)
-      state.selectedSessionIds.add(order[i]);
-  } else {
-    if (state.selectedSessionIds.has(clickedId))
-      state.selectedSessionIds.delete(clickedId);
-    else
-      state.selectedSessionIds.add(clickedId);
-    state.selectionAnchorId = clickedId;
-  }
-  disarmBulkConfirm();
-  render();
-}
-
-function clearSessionSelection() {
-  state.selectedSessionIds = new Set();
-  state.selectionAnchorId = null;
-  disarmBulkConfirm();
-  render();
-}
-
-async function closeSelectedSessions() {
-  const ids = [...state.selectedSessionIds];
-  disarmBulkConfirm();
-  state.confirmCloseId = null;
-  const byId = new Map((state.sessions || []).map((item) => [item.id, item]));
-  let closed = 0;
-  let failed = 0;
-  let firstError = "";
-  for (const id of ids) {
-    const session = byId.get(id);
-    if (!session)
-      continue;
-    try {
-      const response = await postCloseSession(session);
-      if (response?.ok) {
-        closed++;
-        state.selectedSessionIds.delete(id);
-      } else {
-        failed++;
-        firstError = firstError || response?.error || "";
-      }
-    } catch (error) {
-      failed++;
-      firstError = firstError || error?.message || "";
-    }
-  }
-  if (closed && !failed)
-    toast("success", closed === 1 ? "Closed 1 session" : `Closed ${closed} sessions`, 2500);
-  else if (closed && failed)
-    toast("error", `Closed ${closed} session${closed === 1 ? "" : "s"}, ${failed} failed`);
-  else if (failed)
-    toast("error", firstError || (failed === 1 ? "Failed to close 1 session" : `Failed to close ${failed} sessions`));
-  fetchSessions();
-}
-
 async function disconnectTab() {
   try {
     const response = await sendPanelMessage({ type: "disconnect_tab" });
@@ -322,7 +197,6 @@ async function disconnectTab() {
       toast("error", response?.error || "Failed to disconnect");
       return;
     }
-    state.settingsOpen = false;
     render();
   } catch (error) {
     toast("error", error?.message || String(error));
@@ -420,7 +294,8 @@ async function sendQueue() {
     if (response?.ok) {
       const sent = response.sent || 0;
       state.sendFailed = null;
-      toast("success", sent === 1 ? "Sent 1 annotation to OpenCode" : `Sent ${sent} annotations to OpenCode`);
+      const agent = agentLabel(state.claim?.agent);
+      toast("success", sent === 1 ? `Sent 1 annotation to ${agent}` : `Sent ${sent} annotations to ${agent}`);
     } else {
       state.sendFailed = {
         sent: response?.sent || 0,
@@ -510,7 +385,7 @@ function formatUnsentMarkdown(entries) {
   const list = Array.isArray(entries) ? entries : [];
   const screenshotsRetained = list.filter((entry) => entry?.hasScreenshot).length;
   const header = [
-    `# Unsent annotations (${list.length}), paste into OpenCode chat`,
+    `# Unsent annotations (${list.length}), paste into your chat`,
     screenshotsRetained
       ? `${screenshotsRetained} screenshot(s) retained in queue for retry (screenshots are not embedded in clipboard).`
       : "No screenshots retained for these annotations.",
@@ -599,8 +474,8 @@ function formatHistoryMarkdown(attempt) {
   const snapshots = Array.isArray(attempt?.snapshots) ? attempt.snapshots : [];
   const status = attempt?.status === "sent" ? "sent" : attempt?.status === "partial" ? "partial" : "failed";
   const header = status === "sent"
-    ? [`# Sent annotations (${snapshots.length}), paste into OpenCode chat`, ""].join("\n")
-    : [`# Annotation attempt ${status} (${snapshots.length}), paste into OpenCode chat`, ""].join("\n");
+    ? [`# Sent annotations (${snapshots.length}), paste into your chat`, ""].join("\n")
+    : [`# Annotation attempt ${status} (${snapshots.length}), paste into your chat`, ""].join("\n");
   const blocks = snapshots.map((entry, index) => formatAnnotationBlock(entry, index, snapshots.length));
   return `${header}\n${blocks.join("\n\n---\n\n")}\n`;
 }
@@ -628,6 +503,15 @@ async function copyHistoryAttempt(attempt) {
 function projectNameFor(directory) {
   const segments = (directory || "").split("/").filter(Boolean);
   return segments.length ? segments[segments.length - 1] : directory || "Unknown project";
+}
+
+// Stable color per project directory. FNV-1a then the golden angle, because a
+// plain mod-360 hash clusters paths that share a prefix into one hue.
+function projectHue(directory) {
+  let hash = 2166136261;
+  for (const ch of directory || "")
+    hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
+  return Math.round(((hash >>> 0) * 137.508) % 360);
 }
 
 function formatRelative(ts) {
@@ -659,235 +543,51 @@ function toastNode() {
   });
 }
 
-function sessionsNode() {
-  const root = h("div", { className: "section" });
-  root.appendChild(h("div", { className: "header" }, [
-    h("div", { className: "row" }, [
-      h("img", { attrs: { src: "icons/icon48.png", alt: "", class: "logo" } }),
-      h("div", { className: "title", text: "Connect this tab to OpenCode" })
-    ]),
-    h("button", {
-      className: "icon-btn",
-      attrs: { type: "button", "aria-label": "Refresh chat list", title: "Refresh chat list" },
-      on: { click: fetchSessions }
-    }, [icon("refresh")])
-  ]));
-  if (!state.fetchingSessionsStarted || state.fetchingSessions) {
-    root.appendChild(h("div", { className: "hint", text: "Looking for OpenCode…", attrs: { role: "status" } }));
-    return root;
-  }
-  if (!Array.isArray(state.sessions) || !state.sessions.length) {
-    root.appendChild(emptyStateNode());
-    return root;
-  }
-  const groups = [];
-  const byDirectory = new Map();
-  for (const item of state.sessions) {
-    const dir = item.directory || "";
-    let group = byDirectory.get(dir);
-    if (!group) {
-      group = { directory: dir, items: [] };
-      byDirectory.set(dir, group);
-      groups.push(group);
-    }
-    group.items.push(item);
-  }
-  if (groups.length > 1) {
-    const chipsRow = h("div", { className: "chips" });
-    const chipDefs = [{ label: `All (${state.sessions.length})`, value: "" }].concat(groups.map((group) => ({
-      label: `${projectNameFor(group.directory)} (${group.items.length})`,
-      value: group.directory
-    })));
-    for (const def of chipDefs) {
-      const chip = h("button", {
-        className: `chip${state.activeProject === def.value ? " active" : ""}`,
-        text: def.label,
-        attrs: { type: "button", "aria-pressed": state.activeProject === def.value },
-        on: {
-          click: () => {
-            state.activeProject = def.value;
-            render();
-          }
-        }
-      });
-      chipsRow.appendChild(chip);
-    }
-    root.appendChild(chipsRow);
-  }
-  const listContainer = h("div", { className: "list" });
-  const visibleGroups = state.activeProject ? groups.filter((group) => group.directory === state.activeProject) : groups;
-  const linkedId = state.claim?.sessionId || null;
-  lastVisibleSessionIds = visibleGroups.flatMap((group) => group.items.map((item) => item.id));
-  if (state.selectedSessionIds.size) {
-    const count = state.selectedSessionIds.size;
-    const isBulkConfirming = state.confirmBulkClose;
-    root.appendChild(h("div", { className: "bulk-bar" }, [
-      h("span", { className: "bulk-count", text: `${count} selected` }),
+// One primary button on screen at a time: Add to queue while composing,
+// otherwise Send (bottom bar) once something is queued, else Select element.
+function actionNode() {
+  const selection = state.selection;
+  if (selection?.phase === "hover") {
+    return h("div", { className: "picking" }, [
+      icon("crosshair"),
+      h("div", { className: "grow", text: "Click an element on the page…" }),
+      state.addedTick ? addedTickNode() : null,
       h("button", {
-        className: `btn small${isBulkConfirming ? " confirm" : ""}`,
-        text: isBulkConfirming ? "Sure?" : `Close ${count} session${count === 1 ? "" : "s"}`,
-        attrs: { type: "button", "aria-label": `Close ${count} selected session${count === 1 ? "" : "s"}`, title: "Close selected sessions" },
-        on: {
-          click: () => {
-            if (isBulkConfirming) {
-              closeSelectedSessions();
-              return;
-            }
-            armBulkConfirm();
-          }
-        }
-      }),
-      h("button", {
-        className: "btn small",
-        text: "Clear",
-        attrs: { type: "button", "aria-label": "Clear session selection", title: "Clear selection" },
-        on: { click: clearSessionSelection }
-      })
-    ]));
-  }
-  for (const group of visibleGroups) {
-    for (const item of group.items) {
-      const isLinked = Boolean(linkedId) && item.id === linkedId;
-      const isConfirming = state.confirmCloseId === item.id;
-      const isSelected = state.selectedSessionIds.has(item.id);
-      listContainer.appendChild(h("div", { className: `session-row${isSelected ? " selected" : ""}` }, [
-        h("input", {
-          className: "session-select",
-          checked: isSelected,
-          attrs: { type: "checkbox", "aria-label": `Select session ${item.title || item.id}` },
-          on: {
-            click: (event) => toggleSessionSelected(item, event)
-          }
-        }),
-        h("button", {
-          className: "session-item",
-          attrs: { type: "button", title: "Connect this tab to this chat" },
-          disabled: Boolean(state.connectingId),
-          on: {
-            click: () => connectSession(item)
-          }
-        }, [
-          h("div", { className: "row" }, [
-            h("div", { className: "session-name grow", text: item.title || item.id }),
-            isLinked ? h("span", { className: "linked-chip", text: "Linked" }) : null,
-            state.connectingId === item.id ? h("span", { className: "session-date", text: "Connecting…" }) : null,
-            h("span", { className: "session-date", text: formatRelative(item.updatedAt) })
-          ]),
-          h("div", { className: "session-meta", text: item.directory || item.id })
-        ]),
-        h("button", {
-          className: `session-close${isConfirming ? " confirm" : ""}`,
-          text: isConfirming ? "Sure?" : "×",
-          attrs: { type: "button", "aria-label": `Close session ${item.title || item.id}`, title: "Close session" },
-          on: {
-            click: () => {
-              if (isConfirming) {
-                closeSession(item);
-                return;
-              }
-              armConfirmClose(item.id);
-            }
-          }
-        })
-      ]));
-    }
-  }
-  root.appendChild(listContainer);
-  return root;
-}
-
-function emptyStateNode() {
-  const reason = state.sessionsContext?.reason;
-  const content = reason === "no-sessions"
-    ? {
-      title: "No OpenCode session available",
-      text: "The plugin is running, but OpenCode has no open session to connect to.",
-      steps: [
-        "Open OpenCode in the project you want to edit",
-        "Make sure the annotation plugin is enabled in that OpenCode config",
-        "Restart OpenCode if you just changed the config"
-      ]
-    }
-    : {
-      title: "OpenCode plugin not found",
-      text: "No annotation server is running on ports 39240–39260. OpenCode needs the opencode-annotate plugin to start one.",
-      steps: [
-        "Add \"opencode-annotate\" to \"plugins\" in your OpenCode config",
-        "Restart OpenCode in your project",
-        "Come back here and press Try again"
-      ]
-    };
-  return h("div", {}, [
-    h("div", { className: "empty-icon" }, [icon("plug", 16)]),
-    h("div", { className: "empty-title", text: content.title }),
-    h("p", { className: "empty-text", text: content.text }),
-    h("ol", { className: "empty-list" }, content.steps.map((step) => h("li", { text: step }))),
-    h("div", { className: "row end" }, [
-      h("button", {
-        className: "btn",
-        text: "Try again",
+        className: "btn small ghost",
+        text: "Cancel",
         attrs: { type: "button" },
-        on: { click: fetchSessions }
+        on: { click: cancelSelection }
       })
-    ])
+    ]);
+  }
+  if (selection)
+    return null;
+  const hasQueue = state.queue.length > 0;
+  return h("div", { className: "row" }, [
+    h("button", {
+      className: `btn grow${hasQueue ? "" : " primary"}`,
+      attrs: { type: "button" },
+      on: { click: startAnnotation }
+    }, [icon("crosshair"), h("span", { text: hasQueue ? "Select another element" : "Select element" })]),
+    state.addedTick ? addedTickNode() : null
   ]);
 }
 
-function toolbarNode() {
-  const children = [];
-  if (state.selection) {
-    children.push(h("button", {
-      className: "btn",
-      text: "Cancel",
+function sendBarNode() {
+  const count = state.queue.length;
+  if (!count)
+    return null;
+  const composing = state.selection?.phase === "locked";
+  let label = `Send ${count} to ${agentLabel(state.claim?.agent)}`;
+  if (state.pending)
+    label = "Sending…";
+  return h("div", { className: "send-bar" }, [
+    h("button", {
+      className: `btn full${composing ? "" : " primary"}`,
       attrs: { type: "button" },
-      on: { click: cancelSelection }
-    }));
-  } else {
-    children.push(h("button", {
-      className: "btn primary",
-      attrs: { type: "button" },
-      on: { click: startAnnotation }
-    }, [icon("crosshair"), h("span", { text: "Select element" })]));
-    if (state.addedTick)
-      children.push(addedTickNode());
-  }
-  children.push(h("button", {
-    className: "btn primary",
-    attrs: { type: "button" },
-    disabled: state.pending || !state.queue.length,
-    on: { click: sendQueue }
-  }, [icon("send"), h("span", {
-    text: state.pending ? "Sending…" : state.queue.length ? `Send all (${state.queue.length})` : "Send all"
-  })]));
-  children.push(h("div", { className: "grow" }));
-  children.push(h("button", {
-    className: "icon-btn",
-    attrs: { type: "button", "aria-label": "Settings", title: "Settings" },
-    on: {
-      click: () => {
-        state.settingsOpen = !state.settingsOpen;
-        render();
-      }
-    }
-  }, [icon("gear")]));
-  return h("div", { className: "toolbar" }, children);
-}
-
-function settingsNode() {
-  const claim = state.claim;
-  return h("div", { className: "card" }, [
-    h("div", { className: "row" }, [
-      icon("link"),
-      h("div", { className: "hint grow", text: `Linked chat: ${claim.sessionLabel || claim.sessionId || "Connected"}` })
-    ]),
-    h("div", { className: "row end" }, [
-      h("button", {
-        className: "btn small",
-        text: "Disconnect",
-        attrs: { type: "button" },
-        on: { click: disconnectTab }
-      })
-    ])
+      disabled: state.pending,
+      on: { click: sendQueue }
+    }, [icon("send"), h("span", { text: label })])
   ]);
 }
 
@@ -895,21 +595,27 @@ function selectionNode() {
   const selection = state.selection;
   if (!selection)
     return null;
-  if (selection.phase === "hover") {
-    return h("div", { className: "row" }, [
-      h("div", { className: "hint grow", text: "Click an element on the page…" }),
-      state.addedTick ? addedTickNode() : null
-    ]);
-  }
+  if (selection.phase !== "locked")
+    return null;
   const root = h("div", { className: "card" });
   const info = selection.element || {};
-  root.appendChild(h("div", {
-    className: "element-info",
-    text: `${info.tag || ""} ${info.selector || ""}`.trim() || "Selected element"
-  }));
+  root.appendChild(h("div", { className: "element-row" }, [
+    h("div", {
+      className: "element-info grow",
+      text: `${info.tag || ""} ${info.selector || ""}`.trim() || "Selected element"
+    }),
+    h("button", {
+      className: "btn small",
+      text: "Reselect",
+      attrs: { type: "button" },
+      disabled: state.pending,
+      on: { click: reselectElement }
+    })
+  ]));
+  const agent = agentLabel(state.claim?.agent);
   const textarea = h("textarea", {
     className: "textarea",
-    attrs: { placeholder: "What should OpenCode change here?", "aria-label": "Instruction for OpenCode" }
+    attrs: { placeholder: `What should ${agent} change here?`, "aria-label": `Instruction for ${agent}` }
   });
   textarea.value = state.draft;
   textarea.addEventListener("input", () => {
@@ -937,15 +643,14 @@ function selectionNode() {
       attrs: { type: "button" },
       disabled: state.pending,
       on: { click: () => submitSelection(true) }
+    }),
+    h("button", {
+      className: "btn ghost",
+      text: "Cancel",
+      attrs: { type: "button" },
+      on: { click: cancelSelection }
     })
   ]));
-  root.appendChild(h("button", {
-    className: "btn small",
-    text: "Reselect",
-    attrs: { type: "button" },
-    disabled: state.pending,
-    on: { click: reselectElement }
-  }));
   return root;
 }
 
@@ -953,22 +658,23 @@ function queueNode() {
   if (!state.queue.length)
     return null;
   const root = h("div", { className: "section" });
-  root.appendChild(h("div", { className: "row between" }, [
-    h("div", { className: "title", text: "Queued" }),
-    h("div", { className: "queue-actions" }, [
-      h("button", {
-        className: "btn small",
-        attrs: { type: "button", "aria-label": `Copy ${state.queue.length} unsent annotations to clipboard`, title: "Copy unsent annotations to clipboard" },
-        disabled: state.copying || state.pending,
-        on: { click: copyUnsent }
-      }, [icon("copy"), h("span", { text: "Copy unsent" })]),
-      h("button", {
-        className: "btn small",
-        attrs: { type: "button" },
-        disabled: state.pending,
-        on: { click: clearQueue }
-      }, [icon("trash"), h("span", { text: "Clear" })])
-    ])
+  root.appendChild(h("div", { className: "section-head" }, [
+    h("div", { className: "title grow" }, [
+      h("span", { text: "Queue" }),
+      h("span", { className: "count", text: String(state.queue.length) })
+    ]),
+    h("button", {
+      className: "btn small ghost",
+      attrs: { type: "button", "aria-label": `Copy ${state.queue.length} unsent annotations to clipboard`, title: "Copy unsent annotations to clipboard" },
+      disabled: state.copying || state.pending,
+      on: { click: copyUnsent }
+    }, [icon("copy"), h("span", { text: "Copy all" })]),
+    h("button", {
+      className: "btn small ghost",
+      attrs: { type: "button", "aria-label": "Clear the queue", title: "Clear the queue" },
+      disabled: state.pending,
+      on: { click: clearQueue }
+    }, [icon("trash"), h("span", { text: "Clear" })])
   ]));
   if (state.sendFailed) {
     const delivered = state.sendFailed.sent || 0;
@@ -989,106 +695,125 @@ function queueNode() {
       }, [icon("copy"), h("span", { text: state.queue.length === 1 ? "Copy unsent annotation" : `Copy ${state.queue.length} unsent` })])
     ]));
   }
-  const listContainer = h("div", { className: "list" });
+  const listContainer = h("div", { className: "list cards" });
   state.queue.forEach((entry, index) => {
-    const rawComment = typeof entry.comment === "string" ? entry.comment : "";
-    const excerpt = rawComment.length > 140 ? `${rawComment.slice(0, 140)}...` : rawComment;
+    const rawComment = typeof entry.comment === "string" ? entry.comment.trim() : "";
     const label = `${entry.tag || ""} ${entry.selector || ""}`.trim() || "element";
     listContainer.appendChild(h("div", { className: "queue-item" }, [
-      h("div", { className: "row between" }, [
-        h("div", { className: "queue-meta", text: `${index + 1}. ${label}` }),
-        h("div", { className: "queue-item-actions" }, [
-          h("button", {
-            className: "icon-btn",
-            attrs: { type: "button", "aria-label": `Copy queued annotation ${index + 1} to clipboard`, title: "Copy this annotation" },
-            disabled: state.copying,
-            on: { click: () => copySingle(entry.id) }
-          }, [icon("copy")]),
-          h("button", {
-            className: "icon-btn",
-            text: "×",
-            attrs: { type: "button", "aria-label": `Remove queued annotation ${index + 1}` },
-            disabled: state.pending,
-            on: { click: () => removeQueued(entry.id) }
-          })
-        ])
+      h("span", { className: "queue-num", text: String(index + 1), attrs: { "aria-hidden": "true" } }),
+      h("div", { className: "grow" }, [
+        h("div", { className: `queue-comment${rawComment ? "" : " empty"}`, text: rawComment || "No comment" }),
+        h("div", { className: "queue-selector", text: label, attrs: { title: label } })
       ]),
-      excerpt ? h("div", { className: "queue-comment", text: excerpt }) : null
+      h("div", { className: "queue-item-actions" }, [
+        h("button", {
+          className: "icon-btn",
+          attrs: { type: "button", "aria-label": `Copy queued annotation ${index + 1} to clipboard`, title: "Copy this annotation" },
+          disabled: state.copying,
+          on: { click: () => copySingle(entry.id) }
+        }, [icon("copy")]),
+        h("button", {
+          className: "icon-btn",
+          text: "×",
+          attrs: { type: "button", "aria-label": `Remove queued annotation ${index + 1}`, title: "Remove" },
+          disabled: state.pending,
+          on: { click: () => removeQueued(entry.id) }
+        })
+      ])
     ]));
   });
   root.appendChild(listContainer);
-  root.appendChild(h("div", { className: "queue-footer" }, [
-    h("button", {
-      className: "btn small full",
-      attrs: { type: "button", "aria-label": `Copy ${state.queue.length} unsent annotations to clipboard` },
-      disabled: state.copying || state.pending,
-      on: { click: copyUnsent }
-    }, [icon("copy"), h("span", { text: state.copying ? "Copying…" : `Copy unsent (${state.queue.length})` })])
-  ]));
   return root;
 }
 
-function historyStatusLabel(status) {
-  if (status === "sent")
-    return "Sent";
-  if (status === "partial")
-    return "Partial";
-  return "Failed";
+function historyStatus(attempt) {
+  if (attempt?.status === "sent" || attempt?.status === "partial")
+    return attempt.status;
+  return "failed";
+}
+
+const HISTORY_BADGES = {
+  sent: { label: "Sent", mark: "✓" },
+  partial: { label: "Partly sent", mark: "~" },
+  failed: { label: "Failed", mark: "!" }
+};
+
+function historySummary(snapshots, totalCount) {
+  const first = snapshots.find((entry) => typeof entry?.comment === "string" && entry.comment.trim());
+  const count = snapshots.length || totalCount;
+  if (!first)
+    return count === 1 ? "1 annotation" : `${count} annotations`;
+  const text = first.comment.trim();
+  if (count > 1)
+    return `${text} (+${count - 1} more)`;
+  return text;
+}
+
+function historyItemNode(attempt) {
+  const status = historyStatus(attempt);
+  const badge = HISTORY_BADGES[status];
+  const sentCount = Number(attempt?.sentCount) || 0;
+  const totalCount = Number(attempt?.totalCount) || 0;
+  const when = formatRelative(attempt?.timestamp);
+  const stamp = Number(attempt?.timestamp) ? new Date(attempt.timestamp).toLocaleString() : "";
+  const snapshots = Array.isArray(attempt?.snapshots) ? attempt.snapshots : [];
+  let meta = `${badge.label} · ${sentCount} of ${totalCount}`;
+  if (when)
+    meta += ` · ${when}`;
+  let error = null;
+  if (status !== "sent" && attempt?.error) {
+    const message = String(attempt.error);
+    error = h("div", {
+      className: "history-error",
+      text: message.length > 160 ? `${message.slice(0, 160)}…` : message,
+      attrs: { title: message }
+    });
+  }
+  let retry = null;
+  if (status !== "sent") {
+    retry = h("button", {
+      className: "btn small",
+      attrs: { type: "button", title: "Re-send the still-queued entries" },
+      disabled: state.pending || state.copying || !state.queue.length,
+      on: { click: sendQueue }
+    }, [icon("send"), h("span", { text: "Retry" })]);
+  }
+  return h("div", { className: `history-item ${status}` }, [
+    h("span", { className: `history-mark ${status}`, text: badge.mark, attrs: { "aria-hidden": "true" } }),
+    h("div", { className: "grow" }, [
+      h("div", { className: "history-summary", text: historySummary(snapshots, totalCount) }),
+      h("div", { className: "queue-selector", text: meta, attrs: stamp ? { title: stamp } : {} }),
+      error
+    ]),
+    h("div", { className: "queue-item-actions" }, [
+      retry,
+      h("button", {
+        className: "icon-btn",
+        attrs: {
+          type: "button",
+          "aria-label": "Copy this attempt's annotations to clipboard",
+          title: snapshots.length ? "Copy this attempt's annotations" : "No snapshot for this attempt"
+        },
+        disabled: state.copying || state.pending || !snapshots.length,
+        on: { click: () => copyHistoryAttempt(attempt) }
+      }, [icon("copy")])
+    ])
+  ]);
 }
 
 function historyNode() {
   if (!Array.isArray(state.history) || !state.history.length)
     return null;
   const root = h("div", { className: "section" });
-  root.appendChild(h("div", { className: "row between" }, [
-    h("div", { className: "title", text: "Send history" }),
-    h("div", { className: "hint", text: "latest first" })
+  root.appendChild(h("div", { className: "section-head" }, [
+    h("div", { className: "title grow" }, [
+      h("span", { text: "Sent" }),
+      h("span", { className: "count quiet", text: String(state.history.length) })
+    ])
   ]));
-  const listContainer = h("div", { className: "list" });
-  for (const attempt of state.history) {
-    const status = attempt?.status === "sent" ? "sent" : attempt?.status === "partial" ? "partial" : "failed";
-    const sentCount = Number(attempt?.sentCount) || 0;
-    const totalCount = Number(attempt?.totalCount) || 0;
-    const when = formatRelative(attempt?.timestamp);
-    const stamp = Number(attempt?.timestamp) ? new Date(attempt.timestamp).toLocaleString() : "";
-    const canRetry = status !== "sent" && state.queue.length > 0;
-    const snapshots = Array.isArray(attempt?.snapshots) ? attempt.snapshots : [];
-    const canCopyHistory = snapshots.length > 0;
-    const row = h("div", { className: "history-item" });
-    row.appendChild(h("div", { className: "row between" }, [
-      h("div", { className: "row" }, [
-        h("span", { className: `status-chip ${status}`, text: historyStatusLabel(status) }),
-        h("span", { className: "queue-meta", text: `${sentCount} of ${totalCount} sent${when ? ` · ${when}` : ""}`, attrs: stamp ? { title: stamp } : {} })
-      ]),
-      h("div", { className: "history-actions" }, [
-        status === "sent" ? null : h("button", {
-          className: "btn small",
-          attrs: { type: "button", title: "Re-send the still-queued entries" },
-          disabled: state.pending || state.copying || !canRetry,
-          on: { click: sendQueue }
-        }, [icon("send"), h("span", { text: "Retry" })]),
-        h("button", {
-          className: "icon-btn",
-          attrs: {
-            type: "button",
-            "aria-label": "Copy this attempt's annotations to clipboard",
-            title: canCopyHistory ? "Copy this attempt's annotations to clipboard" : "No snapshot for this attempt"
-          },
-          disabled: state.copying || state.pending || !canCopyHistory,
-          on: { click: () => copyHistoryAttempt(attempt) }
-        }, [icon("copy")])
-      ])
-    ]));
-    if (status !== "sent" && attempt?.error) {
-      const message = String(attempt.error);
-      row.appendChild(h("div", {
-        className: "history-error",
-        text: message.length > 160 ? `${message.slice(0, 160)}…` : message,
-        attrs: { title: message }
-      }));
-    }
-    listContainer.appendChild(row);
-  }
+  const listContainer = h("div", { className: "list cards" });
+  for (const attempt of state.history)
+    listContainer.appendChild(historyItemNode(attempt));
   root.appendChild(listContainer);
   return root;
 }
@@ -1096,18 +821,40 @@ function historyNode() {
 function linkedChatNode() {
   const claim = state.claim;
   const label = claim?.sessionLabel || claim?.sessionId || "Connected";
-  return h("div", { className: "row" }, [
-    icon("link"),
-    h("div", { className: "linked-label grow", text: label, attrs: { title: label } })
+  let project = null;
+  if (claim?.projectDirectory) {
+    project = h("span", { className: "linked-project" }, [
+      h("span", {
+        className: "project-dot",
+        attrs: { style: `--dot:${projectHue(claim.projectDirectory)}`, "aria-hidden": "true" }
+      }),
+      h("span", { className: "project-name", text: projectNameFor(claim.projectDirectory), attrs: { title: claim.projectDirectory } })
+    ]);
+  }
+  return h("div", { className: "linked" }, [
+    agentGlyph(claim?.agent, 14),
+    h("div", { className: "grow" }, [
+      h("div", { className: "linked-label", text: label, attrs: { title: label } }),
+      h("div", { className: "linked-meta" }, [
+        h("span", { text: agentLabel(claim?.agent) }),
+        project
+      ])
+    ]),
+    h("button", {
+      className: "btn small",
+      text: "Switch",
+      attrs: { type: "button", title: "Disconnect and pick another chat", "aria-label": "Disconnect and pick another chat" },
+      on: { click: disconnectTab }
+    })
   ]);
 }
 
 function connectedNode() {
   const root = h("div", { className: "contents" });
-  root.appendChild(toolbarNode());
-  root.appendChild(linkedChatNode());
-  if (state.settingsOpen)
-    root.appendChild(settingsNode());
+  root.appendChild(h("div", { className: "chat-header" }, [linkedChatNode()]));
+  const action = actionNode();
+  if (action)
+    root.appendChild(action);
   const selection = selectionNode();
   if (selection)
     root.appendChild(selection);
@@ -1117,6 +864,9 @@ function connectedNode() {
   const history = historyNode();
   if (history)
     root.appendChild(history);
+  const sendBar = sendBarNode();
+  if (sendBar)
+    root.appendChild(sendBar);
   return root;
 }
 
@@ -1147,13 +897,27 @@ function render() {
   let selEnd = null;
   if (active && active !== document.body && app.contains(active)) {
     focusIndex = Array.from(app.querySelectorAll(FOCUSABLE)).indexOf(active);
-    if (active.tagName === "TEXTAREA") {
+    if (active.tagName === "TEXTAREA" || active.tagName === "INPUT") {
       selStart = active.selectionStart;
       selEnd = active.selectionEnd;
     }
   }
   const activeTag = active?.tagName;
+  // Slide the incoming view in the travel direction when switching between
+  // the picker and a connected chat. The class lives only on this element,
+  // so later re-renders stay static.
+  const view = state.claim ? "chat" : "picker";
+  const viewChanged = state.lastView != null && state.lastView !== view;
+  state.lastView = view;
   const ui = buildUI();
+  if (viewChanged) {
+    const direction = view === "chat" ? "view-chat" : "view-picker";
+    ui.classList.add("view-anim", direction);
+    setTimeout(() => {
+      if (ui.isConnected)
+        ui.classList.remove("view-anim", direction);
+    }, 260);
+  }
   app.replaceChildren(ui);
   if (focusIndex >= 0 && !state.focusTextarea) {
     const next = ui.querySelectorAll(FOCUSABLE)[focusIndex];
@@ -1169,6 +933,7 @@ function render() {
     if (textarea)
       textarea.focus();
   }
+  fitProjectChips();
 }
 
 chrome.runtime.onMessage.addListener((message) => {
@@ -1178,6 +943,18 @@ chrome.runtime.onMessage.addListener((message) => {
 
 chrome.tabs.onActivated.addListener(() => {
   refreshState();
+});
+
+// Resize fires per pixel while dragging the panel edge; rebuild once a frame.
+let resizeFrame = 0;
+window.addEventListener("resize", () => {
+  if (resizeFrame)
+    return;
+  resizeFrame = requestAnimationFrame(() => {
+    resizeFrame = 0;
+    state.chipFit = null;
+    render();
+  });
 });
 
 document.addEventListener("keydown", (event) => {
