@@ -1388,8 +1388,14 @@ function render() {
   const viewChanged = state.lastView != null && state.lastView !== view;
   state.lastView = view;
   const ui = buildUI();
-  if (viewChanged)
-    ui.classList.add("view-anim", view === "chat" ? "from-picker" : "from-chat");
+  if (viewChanged) {
+    const direction = view === "chat" ? "view-chat" : "view-picker";
+    ui.classList.add("view-anim", direction);
+    setTimeout(() => {
+      if (ui.isConnected)
+        ui.classList.remove("view-anim", direction);
+    }, 260);
+  }
   app.replaceChildren(ui);
   if (focusIndex >= 0 && !state.focusTextarea) {
     const next = ui.querySelectorAll(FOCUSABLE)[focusIndex];
