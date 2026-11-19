@@ -700,6 +700,7 @@ function queueNode() {
     const rawComment = typeof entry.comment === "string" ? entry.comment.trim() : "";
     const label = `${entry.tag || ""} ${entry.selector || ""}`.trim() || "element";
     listContainer.appendChild(h("div", { className: "queue-item" }, [
+      h("span", { className: "queue-num", text: String(index + 1), attrs: { "aria-hidden": "true" } }),
       h("div", { className: "grow" }, [
         h("div", { className: `queue-comment${rawComment ? "" : " empty"}`, text: rawComment || "No comment" }),
         h("div", { className: "queue-selector", text: label, attrs: { title: label } })
