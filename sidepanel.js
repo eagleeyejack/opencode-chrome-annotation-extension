@@ -25,6 +25,7 @@ const state = {
   selectionAnchorId: null,
   confirmBulkClose: false,
   confirmBulkTimer: null,
+  lastView: null,
   settingsOpen: false,
   draft: "",
   pending: false,
@@ -1380,7 +1381,15 @@ function render() {
     }
   }
   const activeTag = active?.tagName;
+  // Slide the incoming view in the travel direction when switching between
+  // the picker and a connected chat. The class lives only on this element,
+  // so later re-renders stay static.
+  const view = state.claim ? "chat" : "picker";
+  const viewChanged = state.lastView != null && state.lastView !== view;
+  state.lastView = view;
   const ui = buildUI();
+  if (viewChanged)
+    ui.classList.add("view-anim", view === "chat" ? "from-picker" : "from-chat");
   app.replaceChildren(ui);
   if (focusIndex >= 0 && !state.focusTextarea) {
     const next = ui.querySelectorAll(FOCUSABLE)[focusIndex];

@@ -427,6 +427,14 @@
         from { opacity: 0; transform: translateY(3px); }
       }
       .session-row.anim { animation: row-in 180ms ease backwards; animation-delay: calc(var(--i, 0) * 20ms); }
+      .root.view-anim.view-chat { animation: view-chat 240ms cubic-bezier(.2,.8,.2,1); }
+      .root.view-anim.view-picker { animation: view-picker 240ms cubic-bezier(.2,.8,.2,1); }
+      @keyframes view-chat {
+        from { opacity: 0; transform: translateX(20px); }
+      }
+      @keyframes view-picker {
+        from { opacity: 0; transform: translateX(-20px); }
+      }
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { animation: none !important; transition: none !important; }
       }
