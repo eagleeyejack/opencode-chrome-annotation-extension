@@ -1,8 +1,8 @@
 # OpenCode Chrome Annotation
 
-Companion Chrome extension for the [`opencode-annotate`](https://www.npmjs.com/package/opencode-annotate) OpenCode plugin. Annotate any page in Chrome and send the screenshot, selected element metadata, and your instruction straight into your local [OpenCode](https://opencode.ai) session.
+Companion Chrome extension for the [`opencode-annotate`](https://www.npmjs.com/package/opencode-annotate) package. Annotate any page in Chrome and send the screenshot, selected element metadata, and your instruction straight into your local [OpenCode](https://opencode.ai) or Claude Code session.
 
-> Note: this project is not built by the OpenCode team and is not affiliated with them in any way. It is a GPL-3.0 fork of [JodusNodus/opencode-chrome-annotation](https://github.com/JodusNodus/opencode-chrome-annotation) with the extension UI rebuilt as a Chrome side panel.
+> Note: this project is not built by the OpenCode team or by Anthropic, and is not affiliated with either. It is a GPL-3.0 fork of [JodusNodus/opencode-chrome-annotation](https://github.com/JodusNodus/opencode-chrome-annotation) with the extension UI rebuilt as a Chrome side panel.
 
 The plugin side (the OpenCode plugin, local HTTP server, and screenshot handling) lives in the main repo: https://github.com/eagleeyejack/opencode-chrome-annotation
 
@@ -20,6 +20,14 @@ Add the plugin to your OpenCode config:
 On OpenCode 1, use `"plugin": ["opencode-annotate@1"]` instead.
 
 On OpenCode 2, sessions are closed in OpenCode itself, not from the extension.
+
+For Claude Code (2.1.224 or later), start the bridge once. On macOS it then starts at login:
+
+```bash
+npx opencode-annotate@latest claude-bridge --install
+```
+
+Your running Claude Code chats then appear in the panel next to OpenCode ones.
 
 Install the extension from the [Chrome Web Store](https://chromewebstore.google.com/detail/opencode-annotate/opcdjaoejpnkalealbpjabflbejpcmjh?hl=en).
 
