@@ -12,6 +12,7 @@ const state = {
   fetchingSessionsStarted: false,
   activeProject: "",
   searchQuery: "",
+  agentFilter: "",
   showAllProjects: false,
   chipFit: null,
   animateChips: false,
@@ -67,6 +68,8 @@ function h(tag, props = {}, children = []) {
 const ICON_PATHS = {
   refresh: '<path d="M10 6a4 4 0 1 1-1.17-2.83M10 1.5V3.5H8"/>',
   crosshair: '<circle cx="6" cy="6" r="3.2"/><path d="M6 .8v2.4M6 8.8v2.4M.8 6h2.4M8.8 6h2.4"/>',
+  claude: '<path d="M6.4 2.1L5.6 5.2 2.9 3.4 4.7 6.1 1.6 6.9 4.7 7.7 2.9 10.4 5.6 8.6 6.4 11.7 7.2 8.6 9.9 10.4 8.1 7.7 11.2 6.9 8.1 6.1 9.9 3.4 7.2 5.2z"/>',
+  opencode: '<circle cx="6" cy="6" r="4.2"/><circle cx="6" cy="6" r="1.4"/>',
   send: '<path d="M11 1L1 5.5l3.5 2L6 11l5-10z"/><path d="M4.5 7.5L11 1"/>',
   gear: '<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="6" r="0.9"/><path d="M6 1.9v1.7M6 8.4v1.7M1.9 6h1.7M8.4 6h1.7M2.9 2.9l1.2 1.2M7.9 7.9l1.2 1.2M9.1 2.9L7.9 4.1M4.1 7.9l-1.2 1.2"/>',
   check: '<path d="M2 6.4l2.6 2.6L10 3.4"/>',
@@ -675,10 +678,10 @@ function toastNode() {
   });
 }
 
-function sortedSessionGroups() {
+function sortedSessionGroups(sessionList) {
   const groups = [];
   const byDirectory = new Map();
-  const sorted = [...(state.sessions || [])].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const sorted = [...(sessionList || [])].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   for (const item of sorted) {
     const dir = item.directory || "";
     let group = byDirectory.get(dir);
@@ -738,6 +741,10 @@ function sessionRowNode(item, index, linkedId) {
       ]),
       h("div", { className: "session-meta" }, [
         h("span", {
+          className: `agent-glyph${item.agent === "claude-code" ? " claude" : ""}`,
+          attrs: { "aria-hidden": "true" }
+        }, [icon(item.agent === "claude-code" ? "claude" : "opencode", 10)]),
+        h("span", {
           className: "project-dot",
           attrs: { style: `--dot:${projectHue(item.directory)}`, "aria-hidden": "true" }
         }),
@@ -786,7 +793,11 @@ function sessionsNode() {
     root.appendChild(emptyStateNode());
     return root;
   }
-  const groups = sortedSessionGroups();
+  const rawSessions = state.sessions || [];
+  const sessions = state.agentFilter
+    ? rawSessions.filter((item) => item.agent === state.agentFilter)
+    : rawSessions;
+  const groups = sortedSessionGroups(sessions);
   const query = state.searchQuery.trim().toLowerCase();
   const searching = query.length > 0;
   const matches = (item) => !query
@@ -794,23 +805,55 @@ function sessionsNode() {
   const scoped = groups.filter((group) => !state.activeProject || group.directory === state.activeProject);
   const flat = scoped.flatMap((group) => group.items).filter(matches);
   const rows = flat;
+  const agentName = state.agentFilter === "claude-code" ? "Claude Code" : state.agentFilter === "opencode" ? "OpenCode" : "";
 
-  const searchInput = h("input", {
-    className: "search",
-    attrs: { type: "text", placeholder: "Search chats…", "aria-label": "Search chats", spellcheck: "false", autocomplete: "off" }
-  });
-  searchInput.value = state.searchQuery;
-  searchInput.addEventListener("input", () => {
-    state.searchQuery = searchInput.value;
-    render();
-  });
-  root.appendChild(searchInput);
+  const searchRow = h("div", { className: "row" }, [
+    (() => {
+      const searchInput = h("input", {
+        className: "search grow",
+        attrs: { type: "text", placeholder: "Search chats…", "aria-label": "Search chats", spellcheck: "false", autocomplete: "off" }
+      });
+      searchInput.value = state.searchQuery;
+      searchInput.addEventListener("input", () => {
+        state.searchQuery = searchInput.value;
+        render();
+      });
+      return searchInput;
+    })(),
+    h("div", {
+      className: "agent-tabs",
+      attrs: { role: "group", "aria-label": "Filter chats by agent" }
+    }, [
+      { value: "", label: "All chats" },
+      { value: "claude-code", label: "Claude Code chats" },
+      { value: "opencode", label: "OpenCode chats" }
+    ].map((tab) => h("button", {
+      className: `agent-tab${state.agentFilter === tab.value ? " active" : ""}`,
+      attrs: { type: "button", "aria-pressed": String(state.agentFilter === tab.value), "aria-label": tab.label, title: tab.label },
+      on: {
+        click: () => {
+          state.agentFilter = tab.value;
+          state.chipFit = null;
+          render();
+        }
+      }
+    }, [icon(tab.value === "claude-code" ? "claude" : tab.value === "opencode" ? "opencode" : "crosshair", 11)])))
+  ]);
+  root.appendChild(searchRow);
+  if (state.agentFilter && !sessions.length) {
+    root.appendChild(h("div", {
+      className: "hint",
+      attrs: { role: "status" },
+      text: `No ${agentName} chats are running right now.`
+    }));
+    return root;
+  }
   if (groups.length > 1) {
     // Collapsed: All + the latest projects on one auto-fitted line, with a
     // "+N projects" toggle pinned right. Expanded: the line keeps the latest
     // projects and the remaining ones flow beneath it.
     const showAllChips = state.showAllProjects || searching;
-    const chipDefs = [{ label: `All (${state.sessions.length})`, value: "" }].concat(groups.map((group) => ({
+    const chipDefs = [{ label: `All (${sessions.length})`, value: "" }].concat(groups.map((group) => ({
       label: `${projectNameFor(group.directory)} (${group.items.length})`,
       value: group.directory
     })));
@@ -901,7 +944,7 @@ function sessionsNode() {
     root.appendChild(h("div", { className: "results-row" }, [
       h("span", { className: "results-label", text: "Results" }),
       h("span", { className: "results-count" }, [
-        h("span", { text: flat.length ? `${flat.length} of ${(state.sessions || []).length}` : "No matches" }),
+        h("span", { text: flat.length ? `${flat.length} of ${sessions.length}` : "No matches" }),
         h("button", {
           className: "icon-btn search-clear",
           text: "×",
@@ -1224,6 +1267,9 @@ function linkedChatNode() {
   const label = claim?.sessionLabel || claim?.sessionId || "Connected";
   return h("div", { className: "row" }, [
     icon("link"),
+    claim?.agent === "claude-code"
+      ? h("span", { className: "agent-glyph claude", attrs: { "aria-hidden": "true" } }, [icon("claude", 10)])
+      : null,
     claim?.projectDirectory
       ? h("span", {
         className: "project-dot",

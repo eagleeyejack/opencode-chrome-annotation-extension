@@ -27,10 +27,10 @@
       { id: "s9", title: "Rewrite landing hero copy", directory: "/Users/jackevans/Code/jacks-seo", updatedAt: ago(55) },
       { id: "s10", title: "Keyword research: pSEO cluster", directory: "/Users/jackevans/Code/jacks-seo", updatedAt: ago(4300) },
       // acme-site
-      { id: "s12", title: "Client feedback round 2", directory: "/Users/jackevans/Code/clients/acme-site", updatedAt: ago(18) },
+      { id: "s12", title: "Client feedback round 2", agent: "claude-code", directory: "/Users/jackevans/Code/clients/acme-site", updatedAt: ago(18) },
       { id: "s13", title: "Hero video autoplay on iOS", directory: "/Users/jackevans/Code/clients/acme-site", updatedAt: ago(700) },
       // northwind-dashboard
-      { id: "s14", title: "Chart tooltips cut off on mobile", directory: "/Users/jackevans/Code/clients/northwind-dashboard", updatedAt: ago(27) },
+      { id: "s14", title: "Chart tooltips cut off on mobile", agent: "claude-code", directory: "/Users/jackevans/Code/clients/northwind-dashboard", updatedAt: ago(27) },
       { id: "s15", title: "CSV export drops timezone", directory: "/Users/jackevans/Code/clients/northwind-dashboard", updatedAt: ago(900) },
       { id: "s16", title: "Migrate charts off the old lib", directory: "/Users/jackevans/Code/clients/northwind-dashboard", updatedAt: ago(5200) },
       // sideproject
@@ -39,10 +39,10 @@
       { id: "s18", title: "Add staging VPC peering", directory: "/Users/jackevans/Code/ops/infra-terraform", updatedAt: ago(320) },
       { id: "s19", title: "Rotate the leaked API token", directory: "/Users/jackevans/Code/ops/infra-terraform", updatedAt: ago(72) },
       // rag-lab
-      { id: "s20", title: "Chunking strategy comparison", directory: "/Users/jackevans/Code/experiments/rag-lab", updatedAt: ago(1100) },
+      { id: "s20", title: "Chunking strategy comparison", agent: "claude-code", directory: "/Users/jackevans/Code/experiments/rag-lab", updatedAt: ago(1100) },
       { id: "s21", title: "Eval harness for retrieval", directory: "/Users/jackevans/Code/experiments/rag-lab", updatedAt: ago(8600) },
       // handbook
-      { id: "s22", title: "Onboarding checklist rewrite", directory: "/Users/jackevans/Code/docs/handbook", updatedAt: ago(2400) }
+      { id: "s22", title: "Onboarding checklist rewrite", agent: "claude-code", directory: "/Users/jackevans/Code/docs/handbook", updatedAt: ago(2400) }
     ]
   };
 
@@ -66,6 +66,7 @@
           sessionId: session.id,
           sessionLabel: session.title,
           projectDirectory: session.directory,
+          agent: session.agent || "opencode",
           session
         };
         fakeState.queue = [

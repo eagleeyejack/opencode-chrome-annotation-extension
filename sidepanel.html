@@ -364,6 +364,24 @@
       }
       .search::placeholder { color: #9ca3af; }
       .search:focus { border-color: #818cf8; outline: none; box-shadow: 0 0 0 2px rgba(129,140,248,0.35); background: #ffffff; }
+      .agent-tabs { display: inline-flex; gap: 4px; flex: none; }
+      .agent-tab {
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
+        border: 1px solid rgba(0,0,0,0.12);
+        background: transparent;
+        color: #6b7280;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+      }
+      .agent-tab:hover { background: #f3f4f6; color: #111111; }
+      .agent-tab.active { background: #111111; color: #ffffff; border-color: #111111; }
+      .agent-glyph { color: #6b7280; display: inline-flex; flex: none; }
+      .agent-glyph.claude { color: #d97757; }
       .results-row {
         display: flex;
         align-items: center;

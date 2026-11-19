@@ -2165,6 +2165,7 @@ async function claimTabForSession(tab, session) {
     sessionId: session.id,
     sessionLabel: sessionLabel(session),
     projectDirectory: session?.directory || "",
+    agent: session?.agent === "claude-code" ? "claude-code" : "opencode",
     baseUrl: session.baseUrl,
     origin: toOriginPattern(tab.url),
     extensionVersion
