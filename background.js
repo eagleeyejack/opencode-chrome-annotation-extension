@@ -2164,6 +2164,7 @@ async function claimTabForSession(tab, session) {
   claimedTabs.set(tab.id, {
     sessionId: session.id,
     sessionLabel: sessionLabel(session),
+    projectDirectory: session?.directory || "",
     baseUrl: session.baseUrl,
     origin: toOriginPattern(tab.url),
     extensionVersion

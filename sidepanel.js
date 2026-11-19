@@ -1224,6 +1224,12 @@ function linkedChatNode() {
   const label = claim?.sessionLabel || claim?.sessionId || "Connected";
   return h("div", { className: "row" }, [
     icon("link"),
+    claim?.projectDirectory
+      ? h("span", {
+        className: "project-dot",
+        attrs: { style: `--dot:${projectHue(claim.projectDirectory)}`, "aria-hidden": "true" }
+      })
+      : null,
     h("div", { className: "linked-label grow", text: label, attrs: { title: label } })
   ]);
 }

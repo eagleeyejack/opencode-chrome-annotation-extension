@@ -62,7 +62,12 @@
     connect_tab_to_session: (message) => {
       const session = fakeSessions.sessions.find((s) => s.id === message?.session?.id);
       if (session) {
-        fakeState.claim = { sessionId: session.id, sessionLabel: session.title, session };
+        fakeState.claim = {
+          sessionId: session.id,
+          sessionLabel: session.title,
+          projectDirectory: session.directory,
+          session
+        };
         fakeState.queue = [
           {
             id: "dev-queue-1",
