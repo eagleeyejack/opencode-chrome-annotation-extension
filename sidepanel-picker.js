@@ -5,7 +5,6 @@
 async function fetchSessions() {
   state.fetchingSessions = true;
   state.fetchingSessionsStarted = true;
-  state.confirmCloseId = null;
   disarmBulkConfirm();
   render();
   try {
@@ -42,42 +41,12 @@ async function connectSession(session) {
   render();
 }
 
-function armConfirmClose(id) {
-  state.confirmCloseId = id;
-  if (state.confirmCloseTimer)
-    clearTimeout(state.confirmCloseTimer);
-  state.confirmCloseTimer = setTimeout(() => {
-    state.confirmCloseId = null;
-    render();
-  }, 4000);
-  render();
-}
-
 async function postCloseSession(session) {
   return sendPanelMessage({
     type: "close_session",
     sessionId: session.id,
     baseUrl: session.baseUrl
   });
-}
-
-async function closeSession(session) {
-  state.confirmCloseId = null;
-  if (state.confirmCloseTimer) {
-    clearTimeout(state.confirmCloseTimer);
-    state.confirmCloseTimer = null;
-  }
-  try {
-    const response = await postCloseSession(session);
-    if (response?.ok) {
-      toast("success", "Session closed", 2500);
-      fetchSessions();
-      return;
-    }
-    toast("error", response?.error || "Failed to close session");
-  } catch (error) {
-    toast("error", error?.message || String(error));
-  }
 }
 
 // Order of session ids as currently visible in the list (filtered, newest first).
@@ -131,7 +100,10 @@ function toggleSessionSelected(session, event) {
   render();
 }
 
-function clearSessionSelection() {
+// Select mode swaps row clicks from "connect" to "tick" and shows the
+// checkboxes and the close bar; leaving it drops the selection.
+function toggleSelectMode() {
+  state.selectMode = !state.selectMode;
   state.selectedSessionIds = new Set();
   state.selectionAnchorId = null;
   disarmBulkConfirm();
@@ -141,7 +113,6 @@ function clearSessionSelection() {
 async function closeSelectedSessions() {
   const ids = [...state.selectedSessionIds];
   disarmBulkConfirm();
-  state.confirmCloseId = null;
   const byId = new Map((state.sessions || []).map((item) => [item.id, item]));
   let closed = 0;
   let failed = 0;
@@ -170,6 +141,8 @@ async function closeSelectedSessions() {
     toast("error", `Closed ${closed} session${closed === 1 ? "" : "s"}, ${failed} failed`);
   else if (failed)
     toast("error", firstError || (failed === 1 ? "Failed to close 1 session" : `Failed to close ${failed} sessions`));
+  if (!failed)
+    state.selectMode = false;
   fetchSessions();
 }
 
@@ -204,8 +177,8 @@ function animateListOnce() {
   }, 400);
 }
 
-// Claude Code chats can't be closed from here (the bridge refuses), so they
-// get spacers instead of controls that would always fail.
+// Claude Code chats can't be closed from here (the bridge refuses), so in
+// select mode they get a spacer and are dimmed instead of a checkbox.
 function sessionSelectNode(item, isSelected) {
   if (!agentOf(item.agent).closable)
     return h("span", { className: "session-select-spacer" });
@@ -219,47 +192,38 @@ function sessionSelectNode(item, isSelected) {
   });
 }
 
-function sessionCloseNode(item, isConfirming) {
-  if (!agentOf(item.agent).closable)
-    return h("span", { className: "session-close-spacer" });
-  const name = item.title || item.id;
-  return h("button", {
-    className: `session-close${isConfirming ? " confirm" : ""}`,
-    text: isConfirming ? "Close?" : "×",
-    attrs: {
-      type: "button",
-      "aria-label": isConfirming ? `Confirm closing session ${name}` : `Close session ${name}`,
-      title: isConfirming ? "Click again to close" : "Close session"
-    },
-    on: {
-      click: () => {
-        if (isConfirming) {
-          closeSession(item);
-          return;
-        }
-        armConfirmClose(item.id);
-      }
-    }
-  });
+function sessionRowClass(item, isSelected) {
+  let className = "session-row";
+  if (isSelected)
+    className += " selected";
+  if (state.selectMode && !agentOf(item.agent).closable)
+    className += " unselectable";
+  if (state.animateList)
+    className += " anim";
+  return className;
 }
 
 function sessionRowNode(item, index, linkedId) {
   const isLinked = Boolean(linkedId) && item.id === linkedId;
-  const isConfirming = state.confirmCloseId === item.id;
   const isSelected = state.selectedSessionIds.has(item.id);
+  const closable = agentOf(item.agent).closable;
+  let onClick = () => connectSession(item);
+  let title = "Connect this tab to this chat";
+  if (state.selectMode) {
+    onClick = (event) => toggleSessionSelected(item, event);
+    title = closable ? "Select this chat" : "Claude Code chats can't be closed from here";
+  }
   return h("div", {
-    className: `session-row${isSelected ? " selected" : ""}${isConfirming ? " confirming" : ""}${state.animateList ? " anim" : ""}`,
+    className: sessionRowClass(item, isSelected),
     // Cap the stagger so long lists don't trickle in for seconds.
     attrs: { style: `--i:${Math.min(index, 12)}` }
   }, [
-    sessionSelectNode(item, isSelected),
+    state.selectMode ? sessionSelectNode(item, isSelected) : null,
     h("button", {
       className: "session-item",
-      attrs: { type: "button", title: "Connect this tab to this chat" },
-      disabled: Boolean(state.connectingId),
-      on: {
-        click: () => connectSession(item)
-      }
+      attrs: { type: "button", title },
+      disabled: Boolean(state.connectingId) || (state.selectMode && !closable),
+      on: { click: onClick }
     }, [
       h("div", { className: "row" }, [
         h("div", { className: "session-name grow", text: item.title || item.id }),
@@ -279,8 +243,45 @@ function sessionRowNode(item, index, linkedId) {
           attrs: { title: item.directory || item.id }
         })
       ])
-    ]),
-    sessionCloseNode(item, isConfirming)
+    ])
+  ]);
+}
+
+function selectToggleNode() {
+  const hasClosable = (state.sessions || []).some((item) => agentOf(item.agent).closable);
+  if (!hasClosable && !state.selectMode)
+    return null;
+  return h("button", {
+    className: `btn small${state.selectMode ? " primary" : ""}`,
+    text: state.selectMode ? "Done" : "Select",
+    attrs: { type: "button", "aria-pressed": String(state.selectMode), title: state.selectMode ? "Leave select mode" : "Select chats to close" },
+    on: { click: toggleSelectMode }
+  });
+}
+
+function bulkBarNode() {
+  const count = state.selectedSessionIds.size;
+  const isBulkConfirming = state.confirmBulkClose;
+  let label = `Close ${count}`;
+  if (isBulkConfirming)
+    label = "Confirm?";
+  return h("div", { className: "bulk-bar" }, [
+    h("span", { className: "bulk-count", text: count ? `${count} selected` : "Tick the chats to close" }),
+    h("button", {
+      className: `btn small${isBulkConfirming ? " confirm" : ""}`,
+      text: label,
+      disabled: !count,
+      attrs: { type: "button", "aria-label": `Close ${count} selected chat${count === 1 ? "" : "s"}`, title: isBulkConfirming ? "Click again to close" : "Close selected chats" },
+      on: {
+        click: () => {
+          if (isBulkConfirming) {
+            closeSelectedSessions();
+            return;
+          }
+          armBulkConfirm();
+        }
+      }
+    })
   ]);
 }
 
@@ -291,11 +292,14 @@ function sessionsNode() {
       h("img", { attrs: { src: "icons/icon48.png", alt: "", class: "logo" } }),
       h("div", { className: "title", text: "Connect this tab to a chat" })
     ]),
-    h("button", {
-      className: "icon-btn",
-      attrs: { type: "button", "aria-label": "Refresh chat list", title: "Refresh chat list" },
-      on: { click: fetchSessions }
-    }, [icon("refresh")])
+    h("div", { className: "row" }, [
+      selectToggleNode(),
+      h("button", {
+        className: "icon-btn",
+        attrs: { type: "button", "aria-label": "Refresh chat list", title: "Refresh chat list" },
+        on: { click: fetchSessions }
+      }, [icon("refresh")])
+    ])
   ]));
   if (!state.fetchingSessionsStarted || state.fetchingSessions) {
     root.appendChild(h("div", { className: "hint", text: "Looking for chats…", attrs: { role: "status" } }));
@@ -429,34 +433,9 @@ function sessionsNode() {
   }
   const linkedId = state.claim?.sessionId || null;
   lastVisibleSessionIds = rows.filter((item) => agentOf(item.agent).closable).map((item) => item.id);
-  if (state.selectedSessionIds.size) {
-    const count = state.selectedSessionIds.size;
-    const isBulkConfirming = state.confirmBulkClose;
-    root.appendChild(h("div", { className: "bulk-bar" }, [
-      h("span", { className: "bulk-count", text: `${count} selected` }),
-      h("button", {
-        className: `btn small${isBulkConfirming ? " confirm" : ""}`,
-        text: isBulkConfirming ? "Confirm?" : `Close ${count} session${count === 1 ? "" : "s"}`,
-        attrs: { type: "button", "aria-label": `Close ${count} selected session${count === 1 ? "" : "s"}`, title: isBulkConfirming ? "Click again to close" : "Close selected sessions" },
-        on: {
-          click: () => {
-            if (isBulkConfirming) {
-              closeSelectedSessions();
-              return;
-            }
-            armBulkConfirm();
-          }
-        }
-      }),
-      h("button", {
-        className: "btn small",
-        text: "Clear",
-        attrs: { type: "button", "aria-label": "Clear session selection", title: "Clear selection" },
-        on: { click: clearSessionSelection }
-      })
-    ]));
-  }
-  const listContainer = h("div", { className: `list${state.selectedSessionIds.size ? " selecting" : ""}` });
+  if (state.selectMode)
+    root.appendChild(bulkBarNode());
+  const listContainer = h("div", { className: "list" });
   if (searching) {
     root.appendChild(h("div", { className: "results-row" }, [
       h("span", { className: "results-label", text: "Results" }),

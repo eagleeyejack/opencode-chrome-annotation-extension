@@ -19,8 +19,7 @@ const state = {
   animateChipsTimer: null,
   animateList: false,
   animateListTimer: null,
-  confirmCloseId: null,
-  confirmCloseTimer: null,
+  selectMode: false,
   selectedSessionIds: new Set(),
   selectionAnchorId: null,
   confirmBulkClose: false,
@@ -80,7 +79,7 @@ const ICON_PATHS = {
   copy: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><path d="M8.5 3.5v-1a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1"/>'
 };
 
-function icon(name, size = 12) {
+function icon(name, size = 14) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 12 12");
   svg.setAttribute("width", String(size));
@@ -121,7 +120,7 @@ function agentLabel(agent) {
   return agentOf(agent).label;
 }
 
-function agentGlyph(agent, size = 13) {
+function agentGlyph(agent, size = 14) {
   return h("span", {
     className: `agent-glyph${agent === "claude-code" ? " claude" : ""}`,
     attrs: { "aria-hidden": "true" }
