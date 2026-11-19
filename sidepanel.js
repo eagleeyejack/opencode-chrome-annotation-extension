@@ -854,7 +854,7 @@ function sessionsNode() {
         click: () => {
           state.agentFilter = tab.value;
           state.chipFit = null;
-          render();
+          animateListOnce();
         }
       }
     }, [tab.value === "" ? icon("crosshair", 12) : brandIcon(tab.value === "claude-code" ? "claude" : "opencode", 14)])))
