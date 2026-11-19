@@ -543,49 +543,60 @@ function toastNode() {
   });
 }
 
-// One primary action at a time: Add to queue while composing, otherwise
-// Select element while the queue is empty and Send all once it is not.
-function toolbarNode() {
+// One primary button on screen at a time: Add to queue while composing,
+// otherwise Send (bottom bar) once something is queued, else Select element.
+function actionNode() {
+  const selection = state.selection;
+  if (selection?.phase === "hover") {
+    return h("div", { className: "picking" }, [
+      icon("crosshair"),
+      h("div", { className: "grow", text: "Click an element on the page…" }),
+      state.addedTick ? addedTickNode() : null,
+      h("button", {
+        className: "btn small ghost",
+        text: "Cancel",
+        attrs: { type: "button" },
+        on: { click: cancelSelection }
+      })
+    ]);
+  }
+  if (selection)
+    return null;
   const hasQueue = state.queue.length > 0;
-  const sendIsPrimary = hasQueue && !state.selection;
-  const children = [];
-  if (state.selection) {
-    children.push(h("button", {
-      className: "btn",
-      text: "Cancel",
-      attrs: { type: "button" },
-      on: { click: cancelSelection }
-    }));
-  } else {
-    children.push(h("button", {
-      className: `btn${hasQueue ? "" : " primary"}`,
+  return h("div", { className: "row" }, [
+    h("button", {
+      className: `btn grow${hasQueue ? "" : " primary"}`,
       attrs: { type: "button" },
       on: { click: startAnnotation }
-    }, [icon("crosshair"), h("span", { text: "Select element" })]));
-    if (state.addedTick)
-      children.push(addedTickNode());
-  }
-  children.push(h("button", {
-    className: `btn${sendIsPrimary ? " primary" : ""}`,
-    attrs: { type: "button" },
-    disabled: state.pending || !hasQueue,
-    on: { click: sendQueue }
-  }, [icon("send"), h("span", {
-    text: state.pending ? "Sending…" : hasQueue ? `Send all (${state.queue.length})` : "Send all"
-  })]));
-  return h("div", { className: "toolbar" }, children);
+    }, [icon("crosshair"), h("span", { text: hasQueue ? "Select another element" : "Select element" })]),
+    state.addedTick ? addedTickNode() : null
+  ]);
+}
+
+function sendBarNode() {
+  const count = state.queue.length;
+  if (!count)
+    return null;
+  const composing = state.selection?.phase === "locked";
+  let label = `Send ${count} to ${agentLabel(state.claim?.agent)}`;
+  if (state.pending)
+    label = "Sending…";
+  return h("div", { className: "send-bar" }, [
+    h("button", {
+      className: `btn full${composing ? "" : " primary"}`,
+      attrs: { type: "button" },
+      disabled: state.pending,
+      on: { click: sendQueue }
+    }, [icon("send"), h("span", { text: label })])
+  ]);
 }
 
 function selectionNode() {
   const selection = state.selection;
   if (!selection)
     return null;
-  if (selection.phase === "hover") {
-    return h("div", { className: "row" }, [
-      h("div", { className: "hint grow", text: "Click an element on the page…" }),
-      state.addedTick ? addedTickNode() : null
-    ]);
-  }
+  if (selection.phase !== "locked")
+    return null;
   const root = h("div", { className: "card" });
   const info = selection.element || {};
   root.appendChild(h("div", { className: "element-row" }, [
@@ -632,6 +643,12 @@ function selectionNode() {
       attrs: { type: "button" },
       disabled: state.pending,
       on: { click: () => submitSelection(true) }
+    }),
+    h("button", {
+      className: "btn ghost",
+      text: "Cancel",
+      attrs: { type: "button" },
+      on: { click: cancelSelection }
     })
   ]));
   return root;
@@ -641,22 +658,23 @@ function queueNode() {
   if (!state.queue.length)
     return null;
   const root = h("div", { className: "section" });
-  root.appendChild(h("div", { className: "row between" }, [
-    h("div", { className: "title", text: "Queued" }),
-    h("div", { className: "queue-actions" }, [
-      h("button", {
-        className: "btn small",
-        attrs: { type: "button", "aria-label": `Copy ${state.queue.length} unsent annotations to clipboard`, title: "Copy unsent annotations to clipboard" },
-        disabled: state.copying || state.pending,
-        on: { click: copyUnsent }
-      }, [icon("copy"), h("span", { text: "Copy unsent" })]),
-      h("button", {
-        className: "btn small",
-        attrs: { type: "button" },
-        disabled: state.pending,
-        on: { click: clearQueue }
-      }, [icon("trash"), h("span", { text: "Clear" })])
-    ])
+  root.appendChild(h("div", { className: "section-head" }, [
+    h("div", { className: "title grow" }, [
+      h("span", { text: "Queue" }),
+      h("span", { className: "count", text: String(state.queue.length) })
+    ]),
+    h("button", {
+      className: "btn small ghost",
+      attrs: { type: "button", "aria-label": `Copy ${state.queue.length} unsent annotations to clipboard`, title: "Copy unsent annotations to clipboard" },
+      disabled: state.copying || state.pending,
+      on: { click: copyUnsent }
+    }, [icon("copy"), h("span", { text: "Copy all" })]),
+    h("button", {
+      className: "btn small ghost",
+      attrs: { type: "button", "aria-label": "Clear the queue", title: "Clear the queue" },
+      disabled: state.pending,
+      on: { click: clearQueue }
+    }, [icon("trash"), h("span", { text: "Clear" })])
   ]));
   if (state.sendFailed) {
     const delivered = state.sendFailed.sent || 0;
@@ -679,29 +697,28 @@ function queueNode() {
   }
   const listContainer = h("div", { className: "list" });
   state.queue.forEach((entry, index) => {
-    const rawComment = typeof entry.comment === "string" ? entry.comment : "";
-    const excerpt = rawComment.length > 140 ? `${rawComment.slice(0, 140)}...` : rawComment;
+    const rawComment = typeof entry.comment === "string" ? entry.comment.trim() : "";
     const label = `${entry.tag || ""} ${entry.selector || ""}`.trim() || "element";
     listContainer.appendChild(h("div", { className: "queue-item" }, [
-      h("div", { className: "row between" }, [
-        h("div", { className: "queue-meta", text: `${index + 1}. ${label}` }),
-        h("div", { className: "queue-item-actions" }, [
-          h("button", {
-            className: "icon-btn",
-            attrs: { type: "button", "aria-label": `Copy queued annotation ${index + 1} to clipboard`, title: "Copy this annotation" },
-            disabled: state.copying,
-            on: { click: () => copySingle(entry.id) }
-          }, [icon("copy")]),
-          h("button", {
-            className: "icon-btn",
-            text: "×",
-            attrs: { type: "button", "aria-label": `Remove queued annotation ${index + 1}` },
-            disabled: state.pending,
-            on: { click: () => removeQueued(entry.id) }
-          })
-        ])
+      h("div", { className: "grow" }, [
+        h("div", { className: `queue-comment${rawComment ? "" : " empty"}`, text: rawComment || "No comment" }),
+        h("div", { className: "queue-selector", text: label, attrs: { title: label } })
       ]),
-      excerpt ? h("div", { className: "queue-comment", text: excerpt }) : null
+      h("div", { className: "queue-item-actions" }, [
+        h("button", {
+          className: "icon-btn",
+          attrs: { type: "button", "aria-label": `Copy queued annotation ${index + 1} to clipboard`, title: "Copy this annotation" },
+          disabled: state.copying,
+          on: { click: () => copySingle(entry.id) }
+        }, [icon("copy")]),
+        h("button", {
+          className: "icon-btn",
+          text: "×",
+          attrs: { type: "button", "aria-label": `Remove queued annotation ${index + 1}`, title: "Remove" },
+          disabled: state.pending,
+          on: { click: () => removeQueued(entry.id) }
+        })
+      ])
     ]));
   });
   root.appendChild(listContainer);
@@ -806,8 +823,10 @@ function linkedChatNode() {
 
 function connectedNode() {
   const root = h("div", { className: "contents" });
-  root.appendChild(toolbarNode());
-  root.appendChild(linkedChatNode());
+  root.appendChild(h("div", { className: "chat-header" }, [linkedChatNode()]));
+  const action = actionNode();
+  if (action)
+    root.appendChild(action);
   const selection = selectionNode();
   if (selection)
     root.appendChild(selection);
@@ -817,6 +836,9 @@ function connectedNode() {
   const history = historyNode();
   if (history)
     root.appendChild(history);
+  const sendBar = sendBarNode();
+  if (sendBar)
+    root.appendChild(sendBar);
   return root;
 }
 
