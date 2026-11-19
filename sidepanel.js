@@ -11,6 +11,13 @@ const state = {
   fetchingSessions: false,
   fetchingSessionsStarted: false,
   activeProject: "",
+  searchQuery: "",
+  showAllProjects: false,
+  chipFit: null,
+  animateChips: false,
+  animateChipsTimer: null,
+  animateList: false,
+  animateListTimer: null,
   confirmCloseId: null,
   confirmCloseTimer: null,
   selectedSessionIds: new Set(),
@@ -165,7 +172,8 @@ async function fetchSessions() {
     toast("error", error?.message || String(error));
   }
   state.fetchingSessions = false;
-  render();
+  state.chipFit = null;
+  animateListOnce();
 }
 
 async function connectSession(session) {
@@ -630,6 +638,14 @@ function projectNameFor(directory) {
   return segments.length ? segments[segments.length - 1] : directory || "Unknown project";
 }
 
+// Stable color per project directory, used for the list-item dot.
+function projectHue(directory) {
+  let hash = 0;
+  for (const ch of directory || "")
+    hash = (hash * 31 + ch.charCodeAt(0)) % 360;
+  return hash;
+}
+
 function formatRelative(ts) {
   const value = Number(ts);
   if (!Number.isFinite(value) || value <= 0)
@@ -659,6 +675,96 @@ function toastNode() {
   });
 }
 
+function sortedSessionGroups() {
+  const groups = [];
+  const byDirectory = new Map();
+  const sorted = [...(state.sessions || [])].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  for (const item of sorted) {
+    const dir = item.directory || "";
+    let group = byDirectory.get(dir);
+    if (!group) {
+      group = { directory: dir, items: [] };
+      byDirectory.set(dir, group);
+      groups.push(group);
+    }
+    group.items.push(item);
+  }
+  groups.sort((a, b) => (b.items[0]?.updatedAt || 0) - (a.items[0]?.updatedAt || 0));
+  return groups;
+}
+
+// Rows get a staggered entrance animation only when this is armed (initial
+// load, project-chip toggles) - the whole UI re-renders on every keystroke, so
+// a permanent animation would flicker while typing.
+function animateListOnce() {
+  state.animateList = true;
+  render();
+  if (state.animateListTimer)
+    clearTimeout(state.animateListTimer);
+  state.animateListTimer = setTimeout(() => {
+    state.animateList = false;
+  }, 400);
+}
+
+function sessionRowNode(item, index, linkedId) {
+  const isLinked = Boolean(linkedId) && item.id === linkedId;
+  const isConfirming = state.confirmCloseId === item.id;
+  const isSelected = state.selectedSessionIds.has(item.id);
+  return h("div", {
+    className: `session-row${isSelected ? " selected" : ""}${isConfirming ? " confirming" : ""}${state.animateList ? " anim" : ""}`,
+    attrs: { style: `--i:${index}` }
+  }, [
+    h("input", {
+      className: "session-select",
+      checked: isSelected,
+      attrs: { type: "checkbox", "aria-label": `Select session ${item.title || item.id}` },
+      on: {
+        click: (event) => toggleSessionSelected(item, event)
+      }
+    }),
+    h("button", {
+      className: "session-item",
+      attrs: { type: "button", title: "Connect this tab to this chat" },
+      disabled: Boolean(state.connectingId),
+      on: {
+        click: () => connectSession(item)
+      }
+    }, [
+      h("div", { className: "row" }, [
+        h("div", { className: "session-name grow", text: item.title || item.id }),
+        isLinked ? h("span", { className: "linked-chip", text: "Linked" }) : null,
+        state.connectingId === item.id ? h("span", { className: "session-date", text: "Connecting…" }) : null,
+        h("span", { className: "session-date", text: formatRelative(item.updatedAt) })
+      ]),
+      h("div", { className: "session-meta" }, [
+        h("span", {
+          className: "project-dot",
+          attrs: { style: `--dot:${projectHue(item.directory)}`, "aria-hidden": "true" }
+        }),
+        h("span", {
+          className: "project-name",
+          text: projectNameFor(item.directory) || item.id,
+          attrs: { title: item.directory || item.id }
+        })
+      ])
+    ]),
+    h("button", {
+      className: `session-close${isConfirming ? " confirm" : ""}`,
+      text: isConfirming ? "Close?" : "×",
+      attrs: { type: "button", "aria-label": isConfirming ? `Confirm closing session ${item.title || item.id}` : `Close session ${item.title || item.id}`, title: isConfirming ? "Click again to close" : "Close session" },
+      on: {
+        click: () => {
+          if (isConfirming) {
+            closeSession(item);
+            return;
+          }
+          armConfirmClose(item.id);
+        }
+      }
+    })
+  ]);
+}
+
 function sessionsNode() {
   const root = h("div", { className: "section" });
   root.appendChild(h("div", { className: "header" }, [
@@ -680,44 +786,89 @@ function sessionsNode() {
     root.appendChild(emptyStateNode());
     return root;
   }
-  const groups = [];
-  const byDirectory = new Map();
-  for (const item of state.sessions) {
-    const dir = item.directory || "";
-    let group = byDirectory.get(dir);
-    if (!group) {
-      group = { directory: dir, items: [] };
-      byDirectory.set(dir, group);
-      groups.push(group);
-    }
-    group.items.push(item);
-  }
+  const groups = sortedSessionGroups();
+  const query = state.searchQuery.trim().toLowerCase();
+  const searching = query.length > 0;
+  const matches = (item) => !query
+    || `${item.title || ""} ${item.directory || ""}`.toLowerCase().includes(query);
+  const scoped = groups.filter((group) => !state.activeProject || group.directory === state.activeProject);
+  const flat = scoped.flatMap((group) => group.items).filter(matches);
+  const rows = flat;
+
+  const searchInput = h("input", {
+    className: "search",
+    attrs: { type: "text", placeholder: "Search chats…", "aria-label": "Search chats", spellcheck: "false", autocomplete: "off" }
+  });
+  searchInput.value = state.searchQuery;
+  searchInput.addEventListener("input", () => {
+    state.searchQuery = searchInput.value;
+    render();
+  });
+  root.appendChild(searchInput);
   if (groups.length > 1) {
-    const chipsRow = h("div", { className: "chips" });
+    // Collapsed: All + the latest projects on one auto-fitted line, with a
+    // "+N projects" toggle pinned right. Expanded: the line keeps the latest
+    // projects and the remaining ones flow beneath it.
+    const showAllChips = state.showAllProjects || searching;
     const chipDefs = [{ label: `All (${state.sessions.length})`, value: "" }].concat(groups.map((group) => ({
       label: `${projectNameFor(group.directory)} (${group.items.length})`,
       value: group.directory
     })));
-    for (const def of chipDefs) {
-      const chip = h("button", {
-        className: `chip${state.activeProject === def.value ? " active" : ""}`,
-        text: def.label,
-        attrs: { type: "button", "aria-pressed": state.activeProject === def.value },
+    const maxProjects = state.chipFit == null ? 3 : state.chipFit;
+    let headDefs = chipDefs.slice(0, 1 + Math.min(3, groups.length));
+    if (!showAllChips && groups.length > maxProjects)
+      headDefs = chipDefs.slice(0, 1 + maxProjects);
+    if (state.activeProject && !headDefs.some((def) => def.value === state.activeProject)) {
+      const activeDef = chipDefs.find((def) => def.value === state.activeProject);
+      if (activeDef)
+        headDefs.push(activeDef);
+    }
+    const tailDefs = chipDefs.filter((def) => def.value && !headDefs.includes(def));
+    const chipFor = (def) => h("button", {
+      className: `chip${state.activeProject === def.value ? " active" : ""}`,
+      attrs: { type: "button", "aria-pressed": state.activeProject === def.value },
+      on: {
+        click: () => {
+          state.activeProject = def.value;
+          state.chipFit = null;
+          render();
+        }
+      }
+    }, [
+      def.value
+        ? h("span", { className: "project-dot", attrs: { style: `--dot:${projectHue(def.value)}`, "aria-hidden": "true" } })
+        : null,
+      h("span", { text: def.label })
+    ]);
+    const chipsWrap = h("div", { className: "chips-wrap" });
+    const chipsRow = h("div", { className: `chips${showAllChips ? " expanded" : ""}` });
+    for (const def of headDefs)
+      chipsRow.appendChild(chipFor(def));
+    chipsWrap.appendChild(chipsRow);
+    if (tailDefs.length || showAllChips) {
+      chipsWrap.appendChild(h("button", {
+        className: "chip toggle",
+        text: showAllChips ? "Fewer" : `+${tailDefs.length} project${tailDefs.length === 1 ? "" : "s"}`,
+        attrs: { type: "button", "aria-expanded": String(showAllChips), "aria-label": showAllChips ? "Show recent projects only" : "Show all projects" },
         on: {
           click: () => {
-            state.activeProject = def.value;
-            render();
+            state.showAllProjects = !state.showAllProjects;
+            state.chipFit = null;
+            animateChipsOnce();
           }
         }
-      });
-      chipsRow.appendChild(chip);
+      }));
     }
-    root.appendChild(chipsRow);
+    root.appendChild(chipsWrap);
+    if (showAllChips && tailDefs.length) {
+      const moreRow = h("div", { className: `chips-more${state.animateChips ? " anim" : ""}` });
+      for (const def of tailDefs)
+        moreRow.appendChild(chipFor(def));
+      root.appendChild(moreRow);
+    }
   }
-  const listContainer = h("div", { className: "list" });
-  const visibleGroups = state.activeProject ? groups.filter((group) => group.directory === state.activeProject) : groups;
   const linkedId = state.claim?.sessionId || null;
-  lastVisibleSessionIds = visibleGroups.flatMap((group) => group.items.map((item) => item.id));
+  lastVisibleSessionIds = rows.map((item) => item.id);
   if (state.selectedSessionIds.size) {
     const count = state.selectedSessionIds.size;
     const isBulkConfirming = state.confirmBulkClose;
@@ -725,8 +876,8 @@ function sessionsNode() {
       h("span", { className: "bulk-count", text: `${count} selected` }),
       h("button", {
         className: `btn small${isBulkConfirming ? " confirm" : ""}`,
-        text: isBulkConfirming ? "Sure?" : `Close ${count} session${count === 1 ? "" : "s"}`,
-        attrs: { type: "button", "aria-label": `Close ${count} selected session${count === 1 ? "" : "s"}`, title: "Close selected sessions" },
+        text: isBulkConfirming ? "Confirm?" : `Close ${count} session${count === 1 ? "" : "s"}`,
+        attrs: { type: "button", "aria-label": `Close ${count} selected session${count === 1 ? "" : "s"}`, title: isBulkConfirming ? "Click again to close" : "Close selected sessions" },
         on: {
           click: () => {
             if (isBulkConfirming) {
@@ -745,53 +896,28 @@ function sessionsNode() {
       })
     ]));
   }
-  for (const group of visibleGroups) {
-    for (const item of group.items) {
-      const isLinked = Boolean(linkedId) && item.id === linkedId;
-      const isConfirming = state.confirmCloseId === item.id;
-      const isSelected = state.selectedSessionIds.has(item.id);
-      listContainer.appendChild(h("div", { className: `session-row${isSelected ? " selected" : ""}` }, [
-        h("input", {
-          className: "session-select",
-          checked: isSelected,
-          attrs: { type: "checkbox", "aria-label": `Select session ${item.title || item.id}` },
-          on: {
-            click: (event) => toggleSessionSelected(item, event)
-          }
-        }),
+  const listContainer = h("div", { className: "list" });
+  if (searching) {
+    root.appendChild(h("div", { className: "results-row" }, [
+      h("span", { className: "results-label", text: "Results" }),
+      h("span", { className: "results-count" }, [
+        h("span", { text: flat.length ? `${flat.length} of ${(state.sessions || []).length}` : "No matches" }),
         h("button", {
-          className: "session-item",
-          attrs: { type: "button", title: "Connect this tab to this chat" },
-          disabled: Boolean(state.connectingId),
-          on: {
-            click: () => connectSession(item)
-          }
-        }, [
-          h("div", { className: "row" }, [
-            h("div", { className: "session-name grow", text: item.title || item.id }),
-            isLinked ? h("span", { className: "linked-chip", text: "Linked" }) : null,
-            state.connectingId === item.id ? h("span", { className: "session-date", text: "Connecting…" }) : null,
-            h("span", { className: "session-date", text: formatRelative(item.updatedAt) })
-          ]),
-          h("div", { className: "session-meta", text: item.directory || item.id })
-        ]),
-        h("button", {
-          className: `session-close${isConfirming ? " confirm" : ""}`,
-          text: isConfirming ? "Sure?" : "×",
-          attrs: { type: "button", "aria-label": `Close session ${item.title || item.id}`, title: "Close session" },
+          className: "icon-btn search-clear",
+          text: "×",
+          attrs: { type: "button", "aria-label": "Clear search" },
           on: {
             click: () => {
-              if (isConfirming) {
-                closeSession(item);
-                return;
-              }
-              armConfirmClose(item.id);
+              state.searchQuery = "";
+              render();
+              document.querySelector(".search")?.focus();
             }
           }
         })
-      ]));
-    }
+      ])
+    ]));
   }
+  rows.forEach((item, index) => listContainer.appendChild(sessionRowNode(item, index, linkedId)));
   root.appendChild(listContainer);
   return root;
 }
@@ -1137,6 +1263,36 @@ function buildUI() {
 
 const FOCUSABLE = "button, input, textarea";
 
+// Collapsed chips: measure whether All + chips + toggle fit on one line and
+// shrink the project count (3 -> 2 -> 1) until they do. Runs after render;
+// chipFit is reset to null by anything that changes the chips or on resize.
+let chipFitting = false;
+function animateChipsOnce() {
+  state.animateChips = true;
+  render();
+  if (state.animateChipsTimer)
+    clearTimeout(state.animateChipsTimer);
+  state.animateChipsTimer = setTimeout(() => {
+    state.animateChips = false;
+  }, 400);
+}
+
+function fitProjectChips() {
+  if (chipFitting)
+    return;
+  if (state.chipFit == null)
+    state.chipFit = 3;
+  for (let guard = 0; guard < 3; guard++) {
+    const row = document.querySelector(".chips:not(.expanded)");
+    if (!row || state.chipFit <= 1 || row.scrollWidth <= row.clientWidth + 1)
+      return;
+    state.chipFit -= 1;
+    chipFitting = true;
+    render();
+    chipFitting = false;
+  }
+}
+
 function render() {
   // The whole UI is rebuilt on every render, so remember which control had
   // focus (and the caret) and put it back. Otherwise toasts and background
@@ -1147,7 +1303,7 @@ function render() {
   let selEnd = null;
   if (active && active !== document.body && app.contains(active)) {
     focusIndex = Array.from(app.querySelectorAll(FOCUSABLE)).indexOf(active);
-    if (active.tagName === "TEXTAREA") {
+    if (active.tagName === "TEXTAREA" || active.tagName === "INPUT") {
       selStart = active.selectionStart;
       selEnd = active.selectionEnd;
     }
@@ -1169,6 +1325,7 @@ function render() {
     if (textarea)
       textarea.focus();
   }
+  fitProjectChips();
 }
 
 chrome.runtime.onMessage.addListener((message) => {
@@ -1178,6 +1335,11 @@ chrome.runtime.onMessage.addListener((message) => {
 
 chrome.tabs.onActivated.addListener(() => {
   refreshState();
+});
+
+window.addEventListener("resize", () => {
+  state.chipFit = null;
+  render();
 });
 
 document.addEventListener("keydown", (event) => {
