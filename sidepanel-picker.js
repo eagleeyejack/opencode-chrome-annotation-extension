@@ -489,7 +489,7 @@ function emptyStateNode() {
       text: "Nothing is answering on ports 39240–39260. OpenCode starts a server through the opencode-annotate plugin; Claude Code through the Claude Code bridge.",
       steps: [
         "OpenCode: add \"opencode-annotate\" to \"plugins\" in your config, then restart it",
-        "Claude Code: start the bridge with node claude-bridge.mjs",
+        "Claude Code: run node claude-bridge.mjs --install from the opencode-annotate repo",
         "Come back here and press Try again"
       ]
     };

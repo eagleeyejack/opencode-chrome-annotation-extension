@@ -136,13 +136,17 @@ async function discoverInstances() {
   return settled.filter((item) => item.status === "fulfilled").map((item) => item.value);
 }
 async function postJson(baseUrl, path, body) {
+  // Servers answer errors with a non-2xx status and { ok: false, error };
+  // read the body first so the panel shows that message, not "status 400".
   const result = await fetchJson(`${baseUrl}${path}`, {
     method: "POST",
-    body: body || {}
+    body: body || {},
+    throwOnHttp: false
   });
   const payload = result.payload || {};
-  if (payload?.ok === false) {
-    throw new Error(typeof payload.error === "string" ? payload.error : `Request failed (${result.status})`);
+  if (payload?.ok === false || !result.ok) {
+    const message = typeof payload.error === "string" ? payload.error : `Request failed (${result.status})`;
+    throw Object.assign(new Error(message), { status: result.status });
   }
   return payload;
 }
@@ -2068,9 +2072,9 @@ async function runMessageAction(message, tab, sender) {
       await postJson(baseUrl, "/session/close", { sessionId });
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
-      if (text.includes("501") || /session deletion/i.test(text))
+      if (error?.status === 501 || /session deletion/i.test(text))
         throw new Error("This version of OpenCode does not support closing sessions from the extension. Close it in OpenCode instead.");
-      if (text.includes("404") || text === "Not found")
+      if (error?.status === 404 || text === "Not found")
         throw new Error("This version of the opencode-annotate plugin cannot close sessions. Update it and restart OpenCode.");
       throw error;
     }
