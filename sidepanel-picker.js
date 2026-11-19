@@ -208,12 +208,15 @@ function sessionRowNode(item, index, linkedId) {
   const isLinked = Boolean(linkedId) && item.id === linkedId;
   const isConfirming = state.confirmCloseId === item.id;
   const isSelected = state.selectedSessionIds.has(item.id);
+  // Claude Code chats can't be closed from here (the bridge refuses), so
+  // they get spacers instead of controls that would always fail.
+  const closable = agentOf(item.agent).closable;
   return h("div", {
     className: `session-row${isSelected ? " selected" : ""}${isConfirming ? " confirming" : ""}${state.animateList ? " anim" : ""}`,
     // Cap the stagger so long lists don't trickle in for seconds.
     attrs: { style: `--i:${Math.min(index, 12)}` }
   }, [
-    h("input", {
+    !closable ? h("span", { className: "session-select-spacer" }) : h("input", {
       className: "session-select",
       checked: isSelected,
       attrs: { type: "checkbox", "aria-label": `Select session ${item.title || item.id}` },
@@ -248,7 +251,7 @@ function sessionRowNode(item, index, linkedId) {
         })
       ])
     ]),
-    h("button", {
+    !closable ? h("span", { className: "session-close-spacer" }) : h("button", {
       className: `session-close${isConfirming ? " confirm" : ""}`,
       text: isConfirming ? "Close?" : "×",
       attrs: { type: "button", "aria-label": isConfirming ? `Confirm closing session ${item.title || item.id}` : `Close session ${item.title || item.id}`, title: isConfirming ? "Click again to close" : "Close session" },
@@ -288,7 +291,7 @@ function sessionsNode() {
   }
   const rawSessions = state.sessions || [];
   const sessions = state.agentFilter
-    ? rawSessions.filter((item) => item.agent === state.agentFilter)
+    ? rawSessions.filter((item) => (item.agent || "opencode") === state.agentFilter)
     : rawSessions;
   const groups = sortedSessionGroups(sessions);
   const query = state.searchQuery.trim().toLowerCase();
@@ -409,7 +412,7 @@ function sessionsNode() {
     }
   }
   const linkedId = state.claim?.sessionId || null;
-  lastVisibleSessionIds = rows.map((item) => item.id);
+  lastVisibleSessionIds = rows.filter((item) => agentOf(item.agent).closable).map((item) => item.id);
   if (state.selectedSessionIds.size) {
     const count = state.selectedSessionIds.size;
     const isBulkConfirming = state.confirmBulkClose;

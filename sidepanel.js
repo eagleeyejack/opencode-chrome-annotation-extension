@@ -108,8 +108,8 @@ function brandIcon(name, size = 13) {
 }
 
 const AGENTS = {
-  "claude-code": { label: "Claude Code", icon: "claude" },
-  opencode: { label: "OpenCode", icon: "opencode" }
+  "claude-code": { label: "Claude Code", icon: "claude", closable: false },
+  opencode: { label: "OpenCode", icon: "opencode", closable: true }
 };
 
 // Sessions without an agent field come from the OpenCode plugin.
