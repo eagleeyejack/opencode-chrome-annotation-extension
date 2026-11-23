@@ -492,6 +492,31 @@ function agentTabContent(value) {
   return brandIcon(agentOf(value).icon, 14);
 }
 
+// Pasted into OpenCode or Claude Code so the agent sets up its own side.
+// Keep in step with the "Paste this into your agent" block in both READMEs.
+const SETUP_PROMPT = `Set up opencode-annotate so the opencode-annotate Chrome extension can send annotations to you.
+
+If you are OpenCode:
+1. Run \`opencode --version\` to see if this is OpenCode 1 or 2.
+2. Add "opencode-annotate" to my global OpenCode config (~/.config/opencode/opencode.json, create it if missing). OpenCode 2 uses the "plugins" key, OpenCode 1 uses "plugin". Keep any entries already there.
+3. Tell me to restart OpenCode.
+
+If you are Claude Code:
+1. On macOS, run \`npx opencode-annotate@latest claude-bridge --install\`. It starts the bridge now and at every login.
+2. On Linux, tell me to run \`npx opencode-annotate@latest claude-bridge\` in a terminal and leave it open.
+3. Check the bridge answers \`/status\` on 127.0.0.1, on a port from 39240 to 39260.
+
+Then tell me to press Try again in the extension's side panel.`;
+
+async function copySetupPrompt() {
+  try {
+    await copyTextToClipboard(SETUP_PROMPT);
+    toast("success", "Copied. Paste it into OpenCode or Claude Code");
+  } catch (error) {
+    toast("error", error?.message || String(error));
+  }
+}
+
 function emptyStateNode() {
   const reason = state.sessionsContext?.reason;
   const content = reason === "no-sessions"
@@ -505,12 +530,18 @@ function emptyStateNode() {
     }
     : {
       title: "No annotation server found",
-      text: "Nothing is answering on ports 39240–39260. OpenCode starts a server through the opencode-annotate plugin; Claude Code through the Claude Code bridge.",
+      text: "Nothing is answering on ports 39240–39260. Your agent can set itself up:",
       steps: [
-        "OpenCode: add \"opencode-annotate\" to \"plugins\" in your config, then restart it",
-        "Claude Code: run npx opencode-annotate@latest claude-bridge --install",
-        "Come back here and press Try again"
-      ]
+        "Press Copy setup prompt",
+        "Paste it into OpenCode or Claude Code",
+        "When it's done, press Try again"
+      ],
+      action: h("button", {
+        className: "btn primary",
+        text: "Copy setup prompt",
+        attrs: { type: "button" },
+        on: { click: copySetupPrompt }
+      })
     };
   return h("div", {}, [
     h("div", { className: "empty-icon" }, [icon("plug", 16)]),
@@ -518,6 +549,7 @@ function emptyStateNode() {
     h("p", { className: "empty-text", text: content.text }),
     h("ol", { className: "empty-list" }, content.steps.map((step) => h("li", { text: step }))),
     h("div", { className: "row end" }, [
+      ...(content.action ? [content.action] : []),
       h("button", {
         className: "btn",
         text: "Try again",
