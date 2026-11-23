@@ -75,6 +75,7 @@ const ICON_PATHS = {
   send: '<path d="M11 1L1 5.5l3.5 2L6 11l5-10z"/><path d="M4.5 7.5L11 1"/>',
   check: '<path d="M2 6.4l2.6 2.6L10 3.4"/>',
   trash: '<path d="M1.8 3.2h8.4M4.4 3.2V2.2h3.2v1M2.8 3.2l.5 6.8h5.4l.5-6.8M4.9 5.4v2.8M7.1 5.4v2.8"/>',
+  swap: '<path d="M1.5 4h8.5M8 1.8L10.2 4 8 6.2M10.5 8H2M4 5.8L1.8 8 4 10.2"/>',
   plug: '<path d="M4.2 1.2v2.6M7.8 1.2v2.6M2.6 3.8h6.8v1.8a3.4 3.4 0 0 1-6.8 0V3.8zM6 9v1.8"/>',
   copy: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><path d="M8.5 3.5v-1a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1"/>'
 };
@@ -841,11 +842,10 @@ function linkedChatNode() {
       ])
     ]),
     h("button", {
-      className: "btn small",
-      text: "Switch",
+      className: "btn tile",
       attrs: { type: "button", title: "Disconnect and pick another chat", "aria-label": "Disconnect and pick another chat" },
       on: { click: disconnectTab }
-    })
+    }, [icon("swap", 16), h("span", { text: "Switch" })])
   ]);
 }
 
