@@ -23,6 +23,31 @@ async function fetchSessions() {
   state.fetchingSessions = false;
   state.chipFit = null;
   animateListOnce();
+  scheduleEmptyPoll();
+}
+
+// A fresh OpenCode has a server but no chat until the first message. Poll
+// quietly (no "Looking for chats…" flash) so the chat appears when it starts.
+const EMPTY_POLL_MS = 3000;
+let emptyPollTimer = 0;
+
+function scheduleEmptyPoll() {
+  clearTimeout(emptyPollTimer);
+  if (state.sessionsContext?.reason !== "no-sessions" || state.sessions.length)
+    return;
+  emptyPollTimer = setTimeout(async () => {
+    if (!document.hidden && !state.fetchingSessions) {
+      try {
+        const response = await sendPanelMessage({ type: "refresh_sessions" });
+        if (response?.ok && Array.isArray(response.sessions) && response.sessions.length) {
+          state.sessions = response.sessions;
+          state.sessionsContext = response.context || null;
+          animateListOnce();
+        }
+      } catch {}
+    }
+    scheduleEmptyPoll();
+  }, EMPTY_POLL_MS);
 }
 
 async function connectSession(session) {
@@ -471,12 +496,11 @@ function emptyStateNode() {
   const reason = state.sessionsContext?.reason;
   const content = reason === "no-sessions"
     ? {
-      title: "No open chats",
-      text: "An annotation server is running, but it has no open chat to connect to.",
+      title: "No chats yet",
+      text: "Your agent is connected, but it has no chat to link to yet. This list updates on its own.",
       steps: [
-        "Open OpenCode or Claude Code in the project you want to edit",
-        "For OpenCode, check the annotation plugin is enabled in that config",
-        "Come back here and press Try again"
+        "Send a message in OpenCode or Claude Code to start a chat",
+        "It appears here within a few seconds"
       ]
     }
     : {
