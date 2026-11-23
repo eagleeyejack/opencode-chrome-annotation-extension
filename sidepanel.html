@@ -409,6 +409,9 @@
         min-width: 0;
       }
       .chips::-webkit-scrollbar { display: none; }
+      /* Expanded: wrap instead of scrolling, so no chip is clipped under "Fewer". */
+      .chips.expanded { flex-wrap: wrap; overflow: visible; }
+      .chips-wrap:has(.chips.expanded) { align-items: flex-start; }
       .chip {
         display: inline-flex;
         align-items: center;

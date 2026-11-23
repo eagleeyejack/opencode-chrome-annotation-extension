@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "OpenCode Annotate",
   "short_name": "OpenCode Annotate",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "Point at what's broken and send it to your coding agent, with screenshot and selector. Works with OpenCode and Claude Code.",
   "homepage_url": "https://github.com/eagleeyejack/opencode-chrome-annotation-extension",
   "minimum_chrome_version": "114",
